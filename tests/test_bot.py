@@ -311,3 +311,63 @@ def test_credentials_folder_gives_clear_error(tmp_path):
     d.mkdir()
     with pytest.raises(ConfigError, match="is a folder"):
         load_credentials(str(d), required=False)
+
+
+# ---------- stats: wars declared on the 1st day of each month ----------------
+class HistoryEsi(EsiClient):
+    """Synthetic ESI: war IDs 100..(gaps every 7th id), one war every 5 hours."""
+    def __init__(self):
+        super().__init__("http://esi.invalid", "test")
+        from datetime import datetime, timedelta, timezone
+        start = datetime(2026, 6, 25, tzinfo=timezone.utc)
+        self.data = {}
+        wid, t = 100, start
+        while t < datetime(2026, 10, 3, tzinfo=timezone.utc):
+            if wid % 7:                                   # some IDs don't exist
+                self.data[wid] = {"id": wid, "declared": t.isoformat().replace("+00:00", "Z"),
+                                  "mutual": wid % 3 == 0,
+                                  "aggressor": {"alliance_id": 1} if wid % 2 else {"corporation_id": 2}}
+                t += timedelta(hours=5)
+            wid += 1
+        self.calls = 0
+
+    def wars(self, max_war_id=None):
+        self.calls += 1
+        ids = sorted((i for i in self.data if max_war_id is None or i <= max_war_id), reverse=True)
+        return ids[:2000]
+
+    def war(self, wid):
+        self.calls += 1
+        return self.data[wid]
+
+
+def test_stats_counts_wars_on_first_day_of_month():
+    from datetime import date, datetime, timezone
+    from app.stats import collect, render_markdown
+    esi = HistoryEsi()
+    rows = collect(esi, 4, None, today=date(2026, 10, 2))
+    by_month = {r.day.strftime("%Y-%m"): r for r in rows}
+    assert list(by_month) == ["2026-07", "2026-08", "2026-09", "2026-10"]
+    for r in rows:      # brute-force reference count
+        expected = [w for w in esi.data.values() if w["declared"].startswith(r.day.isoformat())]
+        assert r.declared == len(expected), r.day
+        assert r.mutual == sum(w["mutual"] for w in expected)
+        assert r.alliance_aggressor + r.corp_aggressor == r.declared
+    assert all(r.declared in (4, 5) for r in rows)
+    assert esi.calls < 400                                # binary search, not a full scan
+    md = render_markdown(rows, datetime(2026, 10, 2, tzinfo=timezone.utc))
+    assert "| 2026-08 |" in md and "Months covered: **4**" in md
+
+
+def test_stats_bot_columns_from_database(tmp_path):
+    from datetime import date
+    from app.stats import _bot_counts
+    s = _settings(tmp_path, bootstrap_silent=False)
+    store = WarStore(s.sqlite_path)
+    for w in parse_wars(FIX.read_text()):
+        store.add_if_new(w, "pending")
+    store.mark_sent([763527], "m1")
+    store.db.execute("UPDATE wars SET first_seen_at='2026-10-01T00:00:00+00:00'")
+    store.close()
+    assert _bot_counts(s.sqlite_path, date(2026, 10, 23)) == (2, 1)
+    assert _bot_counts(s.sqlite_path, date(2026, 9, 1)) == (None, None)    # before bot start

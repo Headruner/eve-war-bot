@@ -197,6 +197,24 @@ def main(argv: list[str] | None = None) -> int:
         from .installer import install
         return install(iargs.target, iargs.force)
 
+    if argv[:1] == ["stats"]:                        # 1st-of-month war statistics
+        sp = argparse.ArgumentParser(prog="eve-war-bot stats")
+        sp.add_argument("--months", type=int, default=12, help="how many months back (default 12)")
+        sp.add_argument("--json", action="store_true", help="JSON instead of Markdown")
+        sargs = sp.parse_args(argv[1:])
+        s = load_settings()
+        logging.basicConfig(level="WARNING", stream=sys.stderr,
+                            format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+        try:
+            creds = load_credentials(required=False)
+        except ConfigError:
+            creds = Credentials(webhook_url="")
+        from .stats import run as run_stats
+        esi = EsiClient(s.esi_base_url, user_agent(creds), s.request_timeout_s,
+                        s.esi_compatibility_date)
+        print(run_stats(sargs.months, sargs.json, esi, s.sqlite_path))
+        return 0
+
     ap = argparse.ArgumentParser(prog="eve-war-bot")
     ap.add_argument("--once", action="store_true", help="run a single cycle and exit")
     ap.add_argument("--check-config", action="store_true", help="validate files and exit")

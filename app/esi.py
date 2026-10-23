@@ -81,6 +81,10 @@ class EsiClient:
     def war(self, war_id: int) -> dict:
         return self._get(f"/wars/{war_id}/")
 
+    def wars(self, max_war_id: int | None = None) -> list[int]:
+        """Up to 2000 war IDs, newest first, all <= max_war_id."""
+        return self._get("/wars/", **({"max_war_id": max_war_id} if max_war_id else {}))
+
     def war_killmails(self, war_id: int, max_pages: int = 1) -> list[dict]:
         out: list[dict] = []
         page, pages = 1, 1

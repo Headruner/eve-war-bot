@@ -2,6 +2,8 @@
 
 A small Python service in Docker. It watches the DOTLAN war list (`https://evemaps.dotlan.net/wars`) and posts each **new** war declaration to a Discord channel as a message with logos and a banner image. The message also carries a **war report** — the same kind of content as a DOTLAN war page such as `https://evemaps.dotlan.net/war/763527`: timeline, score (ships killed, ISK destroyed, efficiency), defender allies, recent kills and hot systems. The report is kept up to date by editing the same Discord message while the war runs. It remembers what it has already posted in a SQLite database on a Docker volume, so restarting or rebuilding the container does not create duplicates.
 
+> **Project documentation** (vision, KPIs, FRD, user stories, tests, statistics): [`docs/wiki/Home.md`](docs/wiki/Home.md).
+>
 > **New to servers?** Follow the step-by-step guide in [`docs/MANUAL.md`](docs/MANUAL.md): from an empty DigitalOcean droplet to a running bot, copy-and-paste only.
 
 ---
@@ -21,9 +23,10 @@ eve-war-bot/
 │   └── DEPLOY.md                 # short server guide - shipped in the image
 ├── .github/workflows/docker.yml  # CI: tests + build image on GitHub -> ghcr.io
 ├── docs/MANUAL.md                # beginner step-by-step deployment guide
+├── docs/wiki/                    # project wiki: vision, FRD, user stories, tests, statistics
 ├── scripts/
 │   ├── setup-droplet.sh          # server prep, only adds what is missing: tools, swap, Docker (never touches firewall/ports)
-│   ├── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup
+│   ├── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup | stats
 │   ├── publish-nexus.sh          # build + push the image to Nexus (Linux/macOS)
 │   └── publish-nexus.ps1         # same for Windows (Docker Desktop)
 ├── config/
@@ -39,6 +42,7 @@ eve-war-bot/
 │   ├── embeds.py                 # rich Discord embed builder
 │   ├── banner.py                 # "Aggressor VS Defender" PNG generator (Pillow)
 │   ├── discord_notifier.py       # Discord webhook client: post + edit, rate limits, retries
+│   ├── stats.py                  # `stats` command: wars declared on the 1st of each month (ESI + database)
 │   ├── installer.py              # `install` command: unpacks the deployment bundle from the image
 │   ├── healthcheck.py            # Docker HEALTHCHECK
 │   └── models.py                 # War / Party data classes

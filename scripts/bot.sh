@@ -12,6 +12,7 @@
 #   bash scripts/bot.sh status    container state, health, memory/CPU, stored wars
 #   bash scripts/bot.sh update    get the newest version (git pull / image pull) + restart
 #   bash scripts/bot.sh backup    copy the database to ./backups/
+#   bash scripts/bot.sh stats [N] wars declared on the 1st of each month, last N months (default 12)
 # -----------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -101,7 +102,17 @@ case "${1:-help}" in
     $DC cp eve-war-bot:/data/backup.db "$f"
     echo "Saved $f"
     ;;
+  stats)
+    need_creds
+    mkdir -p reports
+    f="reports/war-stats-$(date +%Y-%m-%d).md"
+    echo "Reading war history from CCP ESI (a few minutes for 12 months)..."
+    $DC run --rm -T eve-war-bot stats --months "${2:-12}" > "$f"
+    cat "$f"
+    echo
+    echo "Saved $f - paste it into docs/wiki/05-Statistics.md (section 'Data')."
+    ;;
   *)
-    sed -n '3,15p' "$0"
+    sed -n '3,16p' "$0"
     ;;
 esac
