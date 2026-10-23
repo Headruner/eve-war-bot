@@ -124,6 +124,12 @@ def load_settings(path: str | None = None) -> Settings:
 def load_credentials(path: str | None = None, required: bool = True) -> Credentials:
     path = path or os.getenv("CREDENTIALS_FILE", DEFAULT_CREDENTIALS)
     p = Path(path)
+    if p.is_dir():
+        # Docker creates an empty FOLDER when the mounted file did not exist on the host
+        raise ConfigError(
+            f"{path} is a folder, not a file. Docker created it because "
+            "config/credentials.json was missing on the host. Delete that folder, then "
+            "copy config/credentials.example.json to config/credentials.json and fill it in.")
     if not p.exists():
         if required:
             raise ConfigError(

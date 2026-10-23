@@ -303,3 +303,11 @@ def test_install_unpacks_bundle_and_keeps_user_files(tmp_path, monkeypatch, caps
 def test_install_refuses_unwritable_or_missing_target(tmp_path, monkeypatch):
     from app.installer import install
     assert install(str(tmp_path / "nope")) == 2
+
+
+def test_credentials_folder_gives_clear_error(tmp_path):
+    from app.config import ConfigError, load_credentials
+    d = tmp_path / "credentials.json"
+    d.mkdir()
+    with pytest.raises(ConfigError, match="is a folder"):
+        load_credentials(str(d), required=False)
