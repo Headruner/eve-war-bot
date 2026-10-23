@@ -10,8 +10,9 @@ services:
 
     volumes:
       # secrets + settings, read-only, edited on the host
-      - ./config/credentials.json:/app/config/credentials.json:ro
-      - ./config/config.yaml:/app/config/config.yaml:ro
+      # whole folder (not single files): Docker can never create a fake
+      # "credentials.json" folder, and edits are always visible on Windows/macOS too
+      - ./config:/app/config:ro
       # notification storage - survives restarts / re-creation / upgrades
       - eve-war-bot-data:/data
     environment:

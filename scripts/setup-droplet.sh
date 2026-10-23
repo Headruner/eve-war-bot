@@ -41,14 +41,12 @@ say() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 # installation, or cloud-init on a brand-new server) may hold the apt lock.
 # Wait for it instead of failing with "Could not get lock /var/lib/apt/lists/lock".
 wait_for_apt() {
-  if command -v cloud-init >/dev/null 2>&1; then
-    cloud-init status --wait >/dev/null 2>&1 || true
-  fi
   local waited=0
   while fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \
               /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do
-    if (( waited == 0 )); then
-      echo "apt is busy (another installation or automatic updates) - waiting..."
+    if (( waited % 60 == 0 )); then
+      echo "apt is busy (another installation or automatic updates) - waiting... ${waited}s"
+      fuser -v /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock 2>&1 | sed 's/^/     /' | head -5
     fi
     if (( waited >= 1200 )); then
       echo "apt has been busy for 20 minutes. Check with:  ps aux | grep -E 'apt|dpkg'" >&2
@@ -66,7 +64,8 @@ wait_for_apt
 "${APT[@]}" update
 if [[ $UPGRADE == 1 ]]; then
   echo "--upgrade given: upgrading all packages"
-  "${APT[@]}" upgrade
+  # keep your own modified config files instead of stopping at a Y/N question
+  "${APT[@]}" -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
 fi
 missing=()
 for pkg in ca-certificates curl git nano psmisc; do

@@ -89,13 +89,12 @@ The repository is private, so GitHub needs a **token** (a one-time password made
 On the server:
 
 ```bash
-cloud-init status --wait
 apt-get -o DPkg::Lock::Timeout=600 update && apt-get -o DPkg::Lock::Timeout=600 install -y git
 git clone https://github.com/Headruner/eve-war-bot.git
 cd eve-war-bot
 ```
 
-> The first line waits until any setup that is still running has finished. Ubuntu runs automatic updates in the background (on a brand-new server also its first-boot setup). If one is running, you can get `Could not get lock /var/lib/apt/lists/lock`; `DPkg::Lock::Timeout=600` lets apt wait up to 10 minutes instead.
+> `DPkg::Lock::Timeout=600` lets apt wait up to 10 minutes if Ubuntu's automatic updates are running at that moment, instead of failing with `Could not get lock /var/lib/apt/lists/lock`.
 
 When it asks for **Username**, type your GitHub user name. For **Password**, paste the **token** (again, nothing is shown while you type).
 
@@ -273,7 +272,8 @@ You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com
 | No new messages for a long time | that can be normal: some days have few new wars. Check `logs` — the line `Parsed NN wars, 0 new.` means it is working. |
 | `unauthorized` or `no basic auth credentials` (Option C) | run `docker login <registry-address>` again with the Nexus user. |
 | `server gave HTTP response to HTTPS client` (Option C) | Nexus uses plain HTTP. Ask the admin for HTTPS, or for the `insecure-registries` setting. |
-| `Could not get lock /var/lib/apt/lists/lock … held by process … (apt-get)` | another apt run is active: usually Ubuntu's automatic updates, sometimes another installation (or first-boot setup on a new server). See which one with `ps -fp <process number>`. **Don't delete the lock.** Wait until it finishes, then run the command again. `setup-droplet.sh` waits by itself. |
+| The setup script seems frozen (no CPU or disk activity) | In a second SSH session run `ps -ef --forest \| grep -B2 -A4 [s]etup-droplet`. A question like `*** <file> (Y/I/N/O/D/Z)` in the first window → type **N** and Enter (keeps your config). `cloud-init status --wait` (old script version) → `sudo pkill -f "cloud-init status --wait"`. Never press Ctrl+C while `dpkg` runs. |
+| `Could not get lock /var/lib/apt/lists/lock … held by process … (apt-get)` | another apt run is active: usually Ubuntu's automatic updates, sometimes another installation (or first-boot setup on a new server). See which one with `ps -fp <process number>`. **Don't delete the lock.** Wait until it finishes (`sudo fuser -v /var/lib/dpkg/lock-frontend` shows who holds it), then run the command again. `setup-droplet.sh` waits by itself. |
 | `git clone` says *Authentication failed* | use the **token** as the password, not your GitHub password. Check that the token has access to `eve-war-bot`. |
 | `Permission denied (publickey)` on `ssh` | you chose an SSH key in step 2 but this computer doesn't have it. Use the **Droplet Console** in the browser instead. |
 | You want to start from scratch (the bot forgets all posted wars) | `docker compose down -v`, then `bash scripts/bot.sh start`. ⚠️ This deletes the bot's memory. |
