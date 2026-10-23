@@ -1,0 +1,45 @@
+# EVE War Bot - non-secret settings. Secrets go to credentials.json.
+
+dotlan:
+  base_url: https://evemaps.dotlan.net
+  view: ""                    # "" = active wars | kills | mutual | open
+  poll_interval_min: 15       # be polite to DOTLAN (community site)
+  request_timeout_s: 20
+  bootstrap_silent: true      # 1st run: store current wars, do NOT post them
+
+discord:
+  username: "EVE War Watch"
+  avatar_url: ""              # optional, e.g. https://images.evetech.net/types/587/render?size=128
+  batch_embeds: 1             # 1..10 wars per message
+  min_seconds_between_posts: 2
+  max_attempts: 5             # after that a war is marked 'failed' and never retried
+
+images:
+  image_server: https://images.evetech.net
+  logo_size: 128              # 32 | 64 | 128 | 256
+  banner_enabled: true        # attach generated "A VS D" PNG banner
+
+report:                       # war report like DOTLAN /war/{id}, built from CCP ESI
+  enabled: true
+  esi_base_url: https://esi.evetech.net/latest
+  esi_compatibility_date: "2025-08-26"   # sent as X-Compatibility-Date header
+  recent_kills: 5             # kills listed in the message
+  kill_details_limit: 25      # newest killmails fetched in detail (for systems/kills)
+  max_killmail_pages: 1       # 1 page = up to 2000 killmail references
+  max_allies: 10              # ally names shown (rest as "+N")
+  live_updates: true          # edit the posted message with fresh score/kills
+  update_interval_min: 60
+  track_days: 7               # stop updating a message after N days (or when war ends)
+
+filters:
+  watch_entity_ids: []        # alliance/corp IDs; empty = all wars
+  statuses: [none, open_for_allies, mutual]
+  min_defender_members: 0
+
+storage:
+  sqlite_path: /data/wars.db  # on the Docker volume -> survives restarts
+  heartbeat_file: /data/heartbeat
+
+runtime:
+  log_level: INFO
+  dry_run: false              # true = log payloads instead of posting (no webhook needed)

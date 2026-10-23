@@ -1,0 +1,13 @@
+.git
+.github
+__pycache__/
+*.pyc
+data/
+backups/
+tests/
+docs/
+scripts/
+.env
+config/credentials.json
+*.db
+*.md

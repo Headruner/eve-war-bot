@@ -1,0 +1,44 @@
+services:
+  eve-war-bot:
+    build: .
+    # Option A (default): image is built on the server -> "docker compose up -d --build"
+    # Option B: pull the image built by GitHub Actions -> set EVE_BOT_IMAGE in .env
+    #           (e.g. ghcr.io/andrii-kunitsyn/eve-war-bot:latest) and "docker compose pull"
+    image: ${EVE_BOT_IMAGE:-eve-war-bot:1.2.0}
+    container_name: eve-war-bot
+    restart: unless-stopped
+
+    volumes:
+      # secrets + settings, read-only, edited on the host
+      - ./config/credentials.json:/app/config/credentials.json:ro
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      # notification storage - survives restarts / re-creation / upgrades
+      - eve-war-bot-data:/data
+    environment:
+      - TZ=UTC
+      # - DRY_RUN=true        # uncomment to test without posting to Discord
+
+    # ---- resource limits (1 GB / 2 vCPU droplet; bot uses ~45-80 MB) ----
+    mem_limit: 256m           # hard cap - a bug can never starve the server
+    memswap_limit: 384m       # allow up to 128 MB swap on top
+    mem_reservation: 96m
+    cpus: "0.5"               # max half a core
+    pids_limit: 64
+
+    # ---- hardening (costs nothing) ----
+    read_only: true           # root filesystem read-only; only /data and /tmp writable
+    tmpfs:
+      - /tmp:size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  eve-war-bot-data:
