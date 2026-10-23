@@ -21,7 +21,7 @@ services:
     mem_limit: 256m
     memswap_limit: 384m
     mem_reservation: 96m
-    cpus: "0.5"
+    cpus: 0.5
     pids_limit: 64
 
     # ---- hardening ----

@@ -41,6 +41,8 @@ You don't need to install anything on your own computer.
 
 ## 2. Create the server (droplet)
 
+> **Already have a server** (for example one that runs other apps)? Skip this step and go to step 3. The setup script in step 4.2 only adds what is missing. It does not touch your firewall or restart your other apps.
+
 1. Log in at **cloud.digitalocean.com** → **Create** → **Droplets**.
 2. **Region:** any. One close to you is fine (e.g. Frankfurt or Amsterdam).
 3. **Image:** **Ubuntu 24.04 (LTS) x64**.
@@ -93,7 +95,7 @@ git clone https://github.com/Headruner/eve-war-bot.git
 cd eve-war-bot
 ```
 
-> The first line waits until the new droplet has finished setting itself up. On a brand-new server Ubuntu installs updates by itself for a few minutes. Without the wait you can get `Could not get lock /var/lib/apt/lists/lock`.
+> The first line waits until any setup that is still running has finished. Ubuntu runs automatic updates in the background (on a brand-new server also its first-boot setup). If one is running, you can get `Could not get lock /var/lib/apt/lists/lock`; `DPkg::Lock::Timeout=600` lets apt wait up to 10 minutes instead.
 
 When it asks for **Username**, type your GitHub user name. For **Password**, paste the **token** (again, nothing is shown while you type).
 
@@ -105,9 +107,9 @@ When it asks for **Username**, type your GitHub user name. For **Password**, pas
 sudo bash scripts/setup-droplet.sh
 ```
 
-It takes 2–5 minutes. It updates the system, adds 1 GB of **swap** (emergency memory for a 1 GB server), installs **Docker**, and turns on the **firewall** (only SSH allowed in; the bot doesn't need any open ports).
+It takes 2–5 minutes. It only **adds what is missing**: a few tools, 1 GB of **swap** (emergency memory for a 1 GB server) if the server has none, and **Docker** if it isn't installed yet. It does **not** touch the firewall or open ports, and it doesn't restart anything that is already running, so other apps on the same server are not affected. Add `--upgrade` at the end if you also want all system packages updated.
 
-✅ At the end you see green `==> Done.` and a memory table where the **Swap** line shows `1.0Gi`.
+✅ At the end you see green `==> Done.` and a memory table where the **Swap** line is not `0B`.
 
 ---
 
@@ -238,7 +240,7 @@ Use this when someone has already uploaded the bot to your company's **Nexus** (
 
 You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com:8083`), a **user name** and a **password**.
 
-1. Prepare the server as in step 4.2 (Docker, swap, firewall). If you don't have the code on the server, ask for the file `setup-droplet.sh`, or install Docker the way your admin recommends.
+1. Prepare the server as in step 4.2 (tools, swap, Docker — only what is missing). If you don't have the code on the server, ask for the file `setup-droplet.sh`, or install Docker the way your admin recommends.
 2. Log in to Nexus once:
    ```bash
    docker login <registry-address>
@@ -271,7 +273,7 @@ You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com
 | No new messages for a long time | that can be normal: some days have few new wars. Check `logs` — the line `Parsed NN wars, 0 new.` means it is working. |
 | `unauthorized` or `no basic auth credentials` (Option C) | run `docker login <registry-address>` again with the Nexus user. |
 | `server gave HTTP response to HTTPS client` (Option C) | Nexus uses plain HTTP. Ask the admin for HTTPS, or for the `insecure-registries` setting. |
-| `Could not get lock /var/lib/apt/lists/lock … held by process … (apt-get)` | Ubuntu is installing its own updates (normal on a new droplet). **Don't delete the lock.** Wait with `cloud-init status --wait`, then run the command again. `setup-droplet.sh` waits by itself. |
+| `Could not get lock /var/lib/apt/lists/lock … held by process … (apt-get)` | another apt run is active: usually Ubuntu's automatic updates, sometimes another installation (or first-boot setup on a new server). See which one with `ps -fp <process number>`. **Don't delete the lock.** Wait until it finishes, then run the command again. `setup-droplet.sh` waits by itself. |
 | `git clone` says *Authentication failed* | use the **token** as the password, not your GitHub password. Check that the token has access to `eve-war-bot`. |
 | `Permission denied (publickey)` on `ssh` | you chose an SSH key in step 2 but this computer doesn't have it. Use the **Droplet Console** in the browser instead. |
 | You want to start from scratch (the bot forgets all posted wars) | `docker compose down -v`, then `bash scripts/bot.sh start`. ⚠️ This deletes the bot's memory. |

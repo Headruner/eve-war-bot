@@ -22,7 +22,7 @@ eve-war-bot/
 ├── .github/workflows/docker.yml  # CI: tests + build image on GitHub -> ghcr.io
 ├── docs/MANUAL.md                # beginner step-by-step deployment guide
 ├── scripts/
-│   ├── setup-droplet.sh          # one-time server prep: updates, swap, Docker, firewall
+│   ├── setup-droplet.sh          # server prep, only adds what is missing: tools, swap, Docker (never touches firewall/ports)
 │   ├── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup
 │   ├── publish-nexus.sh          # build + push the image to Nexus (Linux/macOS)
 │   └── publish-nexus.ps1         # same for Windows (Docker Desktop)
@@ -509,7 +509,7 @@ Wars that do not match the filters are stored as `filtered`. They will **not** b
 | Entry point | `python -m app.main` (extra arguments: `--once`, `--check-config`, `--html-file`; `install [--force]` unpacks the deployment bundle) |
 | Restart | `unless-stopped` |
 | Memory | `mem_limit: 256m`, `memswap_limit: 384m`, `mem_reservation: 96m` (measured use ≈ 45–80 MB) |
-| CPU / processes | `cpus: "0.5"`, `pids_limit: 64` |
+| CPU / processes | `cpus: 0.5`, `pids_limit: 64` |
 | Python memory | `MALLOC_ARENA_MAX=2` (fewer glibc arenas → lower resident memory when idle) |
 | Filesystem | `read_only: true`; writable only `/data` (volume) and `/tmp` (32 MB tmpfs); bytecode precompiled at build |
 | Hardening | non-root, `cap_drop: ALL`, `no-new-privileges` |
@@ -521,14 +521,16 @@ Wars that do not match the filters are stored as `filtered`. They will **not** b
 
 ### 7.1 Host recommendations (1 GB droplet)
 
-`scripts/setup-droplet.sh` applies these:
+`scripts/setup-droplet.sh` is safe on a server that already runs other applications. It only **adds what is missing**:
 
-| Item | Setting | Why |
+| Item | What the script does | Why |
 |---|---|---|
-| Swap | 1 GB `/swapfile`, `vm.swappiness=10` | protects the 1 GB server from out-of-memory kills during image builds or OS updates |
-| Docker logs | `/etc/docker/daemon.json`: json-file, 3 × 5 MB | the disk can't fill up with logs |
-| Firewall | `ufw`: allow OpenSSH only | the bot makes outgoing connections only, no open ports needed |
-| Updates | `unattended-upgrades` | security patches are installed automatically |
+| Tools | installs `curl`, `git`, `nano`, `psmisc`, `ca-certificates` only if missing; full `apt upgrade` only with `--upgrade` | no unexpected upgrades or restarts of other services |
+| Swap | 1 GB `/swapfile` **only if the server has no swap** | protects a 1 GB server from out-of-memory kills |
+| Docker | installs Docker + compose **only if Docker is missing**; an existing Docker is not reconfigured or restarted | other containers keep running |
+| Docker logs | `/etc/docker/daemon.json` (3 × 5 MB) only on a fresh Docker install; the bot always limits its own logs in `docker-compose.yml` | the disk can't fill up with logs |
+| Environment variables, kernel settings (`sysctl`) | **never touched** | the server's own configuration stays as it is |
+| Firewall / ports | **never touched** | other apps on the server keep their open ports; the bot itself needs no incoming port |
 | Image build | optional GitHub Actions → GHCR (`.github/workflows/docker.yml`) | the build runs on GitHub, the droplet only downloads the image |
 
 Rough memory budget: OS ≈ 150–250 MB · Docker ≈ 80–120 MB · bot ≈ 45–80 MB (hard cap 256 MB) → about 550–700 MB stay free.
@@ -600,7 +602,7 @@ The script runs the tests (if pytest is installed), logs in, runs `docker buildx
 #### C. Install on the Linux VM (one time)
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/Headruner/eve-war-bot/main/scripts/setup-droplet.sh)"   # optional: Docker, swap, firewall (public repos only)
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/Headruner/eve-war-bot/main/scripts/setup-droplet.sh)"   # optional: tools, swap, Docker if missing (public repos only)
 docker login nexus.example.com:8083                              # user eve-server
 mkdir -p ~/eve-war-bot && cd ~/eve-war-bot
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" nexus.example.com:8083/eve-war-bot:latest install

@@ -22,7 +22,7 @@ services:
     mem_limit: 256m           # hard cap - a bug can never starve the server
     memswap_limit: 384m       # allow up to 128 MB swap on top
     mem_reservation: 96m
-    cpus: "0.5"               # max half a core
+    cpus: 0.5               # max half a core
     pids_limit: 64
 
     # ---- hardening (costs nothing) ----
