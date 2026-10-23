@@ -108,6 +108,18 @@ class WarStore:
              json.dumps(war.to_dict()), state, _now()))
         return cur.rowcount == 1
 
+    def has(self, war_id: int) -> bool:
+        return self.db.execute("SELECT 1 FROM wars WHERE war_id=?", (war_id,)).fetchone() is not None
+
+    def max_war_id(self) -> int | None:
+        return self.db.execute("SELECT MAX(war_id) FROM wars").fetchone()[0]
+
+    def add_marker(self, war_id: int, state: str = "skipped") -> None:
+        """Remember an ID that has no usable data (e.g. 404), so it is not retried."""
+        self.db.execute(
+            "INSERT OR IGNORE INTO wars(war_id, payload, state, first_seen_at) VALUES (?,?,?,?)",
+            (war_id, "{}", state, _now()))
+
     def pending(self, limit: int = 100) -> list[War]:
         rows = self.db.execute(
             "SELECT payload FROM wars WHERE state='pending' "

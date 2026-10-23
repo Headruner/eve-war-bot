@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Scope** | User acceptance of release 1.3.0 against the [user stories](03-User-Stories.md) |
+| **Scope** | User acceptance of release 2.0.0 against the [user stories](03-User-Stories.md) |
 | **Product owner (accepts)** | Andrii Kunitsyn |
-| **Updated** | 2026-10-24 |
+| **Updated** | 2026-10-24 (2.0.0) |
 
 ---
 
@@ -41,8 +41,8 @@ Accepted --> [*]
 
 ## 3. Current state
 
-- Acceptance criteria in total: **68**
-- **Accepted (field):** 3 · **Ready for UAT (automated + manual):** 16 · **Ready for UAT (manual only):** 14 · **Not started:** 1
+- Acceptance criteria in total: **77**
+- **Accepted (field):** 2 · **Ready for UAT (automated + manual):** 22 · **Ready for UAT (manual only):** 11 · **Not started:** 1
 
 ## 4. Acceptance matrix
 
@@ -52,12 +52,14 @@ Accepted --> [*]
 
 | Story | ACs | Automated | Manual | Field | Acceptance |
 |---|---:|---|---|---|---|
-| [US-01.01](user-stories/US-01.01.md) Scheduled polling of the DOTLAN wars list | 2 | — | [MT-S-06](07-Manual-Test-Scenarios.md#mt-s-06), [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) | ◐ | Ready for UAT (manual only) |
-| [US-01.02](user-stories/US-01.02.md) Parse each war row | 2 | 2 | [MT-S-02](07-Manual-Test-Scenarios.md#mt-s-02), [MT-R-02](07-Manual-Test-Scenarios.md#mt-r-02) | ◐ | Ready for UAT |
+| [US-01.01](user-stories/US-01.01.md) Scheduled polling of ESI for new wars | 3 | 1 | [MT-S-06](07-Manual-Test-Scenarios.md#mt-s-06), [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) | — | Ready for UAT |
+| [US-01.02](user-stories/US-01.02.md) War details from ESI | 3 | 2 | [MT-S-02](07-Manual-Test-Scenarios.md#mt-s-02), [MT-R-02](07-Manual-Test-Scenarios.md#mt-r-02) | — | Ready for UAT |
 | [US-01.03](user-stories/US-01.03.md) Use full entity names | 1 | 1 | [MT-R-02](07-Manual-Test-Scenarios.md#mt-r-02) | — | Ready for UAT |
-| [US-01.04](user-stories/US-01.04.md) Notify each war only once | 2 | 1 | [MT-S-05](07-Manual-Test-Scenarios.md#mt-s-05), [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) | — | Ready for UAT |
-| [US-01.05](user-stories/US-01.05.md) Silent first run | 2 | 1 | [MT-R-01](07-Manual-Test-Scenarios.md#mt-r-01) | ✔ | **Accepted (field)** |
-| [US-01.06](user-stories/US-01.06.md) Survive DOTLAN layout changes | 2 | — | [MT-R-30](07-Manual-Test-Scenarios.md#mt-r-30) | — | Ready for UAT (manual only) |
+| [US-01.04](user-stories/US-01.04.md) Notify each war only once | 3 | 2 | [MT-S-05](07-Manual-Test-Scenarios.md#mt-s-05), [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) | — | Ready for UAT |
+| [US-01.05](user-stories/US-01.05.md) Silent first run | 2 | 1 | [MT-R-01](07-Manual-Test-Scenarios.md#mt-r-01) | — | Ready for UAT |
+| [US-01.06](user-stories/US-01.06.md) Survive ESI errors | 3 | 3 | [MT-R-30](07-Manual-Test-Scenarios.md#mt-r-30) | — | Ready for UAT |
+| [US-01.07](user-stories/US-01.07.md) Follow the ESI rules | 3 | 4 | [MT-R-30](07-Manual-Test-Scenarios.md#mt-r-30), [MT-R-31](07-Manual-Test-Scenarios.md#mt-r-31) | — | Ready for UAT |
+| [US-01.08](user-stories/US-01.08.md) Upgrade from 1.x without old posts | 2 | 3 | [MT-R-32](07-Manual-Test-Scenarios.md#mt-r-32) | — | Ready for UAT |
 
 ### EP-02 Discord delivery
 
@@ -68,7 +70,7 @@ Accepted --> [*]
 | [US-02.03](user-stories/US-02.03.md) Detect an invalid webhook | 1 | — | [MT-R-07](07-Manual-Test-Scenarios.md#mt-r-07) | — | Ready for UAT (manual only) |
 | [US-02.04](user-stories/US-02.04.md) Ping a role for new wars | 2 | — | [MT-R-08](07-Manual-Test-Scenarios.md#mt-r-08) | — | Ready for UAT (manual only) |
 | [US-02.05](user-stories/US-02.05.md) Several wars in one message | 1 | 1 | [MT-R-09](07-Manual-Test-Scenarios.md#mt-r-09) | — | Ready for UAT |
-| [US-02.06](user-stories/US-02.06.md) Filter which wars are posted | 3 | 1 | [MT-R-10](07-Manual-Test-Scenarios.md#mt-r-10) | — | Ready for UAT |
+| [US-02.06](user-stories/US-02.06.md) Filter which wars are posted | 3 | 2 | [MT-R-10](07-Manual-Test-Scenarios.md#mt-r-10) | — | Ready for UAT |
 
 ### EP-03 Rich message content
 
@@ -76,7 +78,7 @@ Accepted --> [*]
 |---|---:|---|---|---|---|
 | [US-03.01](user-stories/US-03.01.md) Show alliance/corporation logos | 2 | 1 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-11](07-Manual-Test-Scenarios.md#mt-r-11) | — | Ready for UAT |
 | [US-03.02](user-stories/US-03.02.md) Attach a VS banner | 2 | 1 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-11](07-Manual-Test-Scenarios.md#mt-r-11) | — | Ready for UAT |
-| [US-03.03](user-stories/US-03.03.md) Colours, local times and links | 2 | 1 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-12](07-Manual-Test-Scenarios.md#mt-r-12) | — | Ready for UAT |
+| [US-03.03](user-stories/US-03.03.md) Colours, local times and links | 2 | 3 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-12](07-Manual-Test-Scenarios.md#mt-r-12) | — | Ready for UAT |
 
 ### EP-04 War report & live updates
 
@@ -92,8 +94,8 @@ Accepted --> [*]
 
 | Story | ACs | Automated | Manual | Field | Acceptance |
 |---|---:|---|---|---|---|
-| [US-05.01](user-stories/US-05.01.md) Credentials in a JSON file with validation | 3 | 1 | [MT-S-01](07-Manual-Test-Scenarios.md#mt-s-01), [MT-R-04](07-Manual-Test-Scenarios.md#mt-r-04), [MT-R-05](07-Manual-Test-Scenarios.md#mt-r-05), [MT-R-06](07-Manual-Test-Scenarios.md#mt-r-06) | ✔ | **Accepted (field)** |
-| [US-05.02](user-stories/US-05.02.md) Settings in a YAML file | 2 | — | [MT-R-27](07-Manual-Test-Scenarios.md#mt-r-27) | — | Ready for UAT (manual only) |
+| [US-05.01](user-stories/US-05.01.md) Credentials in a JSON file with validation | 3 | 2 | [MT-S-01](07-Manual-Test-Scenarios.md#mt-s-01), [MT-R-04](07-Manual-Test-Scenarios.md#mt-r-04), [MT-R-05](07-Manual-Test-Scenarios.md#mt-r-05), [MT-R-06](07-Manual-Test-Scenarios.md#mt-r-06) | ✔ | **Accepted (field)** |
+| [US-05.02](user-stories/US-05.02.md) Settings in a YAML file | 2 | 1 | [MT-R-27](07-Manual-Test-Scenarios.md#mt-r-27) | — | Ready for UAT |
 | [US-05.03](user-stories/US-05.03.md) Dry run | 2 | 1 | [MT-S-02](07-Manual-Test-Scenarios.md#mt-s-02), [MT-R-28](07-Manual-Test-Scenarios.md#mt-r-28) | ✔ | **Accepted (field)** |
 
 ### EP-06 Deployment & operations
@@ -120,6 +122,8 @@ Accepted --> [*]
 
 ## 5. Field evidence so far
 
+The evidence below was collected with **1.3** (DOTLAN source). 2.0 replaces the war source with ESI, so the EP-01 stories need field evidence again; the other epics are unchanged.
+
 | Date | Where | Observation | Stories |
 |---|---|---|---|
 | 2026-10-23 | Windows PC, Docker Desktop | Config validation (empty or folder `credentials.json` → clear error), dry run with `[DRY RUN] POST` lines | [US-05.01](user-stories/US-05.01.md), [US-05.03](user-stories/US-05.03.md) |
@@ -136,6 +140,7 @@ Accepted --> [*]
 | DEF-03 | 2026-10-23 | High | Setup script could hang forever on `cloud-init status --wait` on long-running servers | Removed; progress output while waiting for apt | Fixed |
 | DEF-04 | 2026-10-23 | Medium | `cpus: "0.5"` rejected by older Docker Compose | `cpus: 0.5` | Fixed |
 | DEF-05 | 2026-10-23 | Medium | Docker created a `credentials.json` **folder**; stale single-file mount on Docker Desktop | Mount whole `config/` folder; clear error message | Fixed |
+| DEF-07 | 2026-10-24 | Medium | CI failed: `import app` not found with plain `pytest` | `pytest.ini` with `pythonpath = .` | Fixed |
 | DEF-06 | 2026-10-23 | Low | `apt-get upgrade` 404 on outdated package lists (old setup script) | No upgrade by default; `--upgrade` runs `update` first | Fixed |
 
 ## 7. Sign-off

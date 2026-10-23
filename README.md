@@ -1,6 +1,6 @@
-# EVE War Bot — DOTLAN Wars → Discord
+# EVE War Bot — EVE Online wars (ESI) → Discord
 
-A small Python service in Docker. It watches the DOTLAN war list (`https://evemaps.dotlan.net/wars`) and posts each **new** war declaration to a Discord channel as a message with logos and a banner image. The message also carries a **war report** — the same kind of content as a DOTLAN war page such as `https://evemaps.dotlan.net/war/763527`: timeline, score (ships killed, ISK destroyed, efficiency), defender allies, recent kills and hot systems. The report is kept up to date by editing the same Discord message while the war runs. It remembers what it has already posted in a SQLite database on a Docker volume, so restarting or rebuilding the container does not create duplicates.
+A small Python service in Docker. It reads new war declarations directly from **CCP's official EVE Online API, ESI** ([docs](https://developers.eveonline.com/docs/services/esi/overview/)), and posts each **new** war to a Discord channel as a message with logos and a banner image. Since version 2.0, no website is scraped. The message also carries a **war report**, the same kind of content as a DOTLAN war page: timeline, score (ships killed, ISK destroyed, efficiency), defender allies, recent kills and hot systems. The report is kept up to date by editing the same Discord message while the war runs. It remembers what it has already posted in a SQLite database on a Docker volume, so restarting or rebuilding the container does not create duplicates.
 
 > **Project documentation** (vision, KPIs, FRD, user stories, tests, statistics): [`docs/wiki/Home.md`](docs/wiki/Home.md).
 >
@@ -35,8 +35,8 @@ eve-war-bot/
 ├── app/
 │   ├── main.py                   # scheduler loop: read -> store -> notify -> update reports
 │   ├── config.py                 # loads config.yaml + credentials.json, validates
-│   ├── scraper.py                # DOTLAN HTML -> War objects
-│   ├── esi.py                    # CCP ESI client (wars, killmails, names) - war report data
+│   ├── source.py                 # new wars: ESI GET /wars/ + /wars/{id}/ -> War objects
+│   ├── esi.py                    # CCP ESI client: version-less routes, compatibility date, Expires/ETag cache, rate limits
 │   ├── report.py                 # builds the war report (score, allies, kills, systems)
 │   ├── store.py                  # SQLite notification storage (dedup)
 │   ├── embeds.py                 # rich Discord embed builder
@@ -46,7 +46,7 @@ eve-war-bot/
 │   ├── installer.py              # `install` command: unpacks the deployment bundle from the image
 │   ├── healthcheck.py            # Docker HEALTHCHECK
 │   └── models.py                 # War / Party data classes
-└── tests/                        # pytest, saved HTML page, fake ESI, mock Discord server
+└── tests/                        # pytest: fake ESI, mock ESI HTTP server, mock Discord server
 ```
 
 ---
@@ -68,7 +68,7 @@ eve-war-bot/
    ```
 5. **Test without posting.** Set `runtime.dry_run: true` in `config.yaml` or uncomment `DRY_RUN=true` in `docker-compose.yml`. The bot then logs the Discord payloads instead of sending them, and the webhook URL may be empty.
 
-On the **first run**, all wars currently listed are stored as `skipped` and nothing is posted (`bootstrap_silent: true`). From then on, only wars that appear later are posted.
+On the **first run**, the bot remembers the newest war ID from ESI and posts nothing (`bootstrap_silent: true`). From then on, every war with a higher ID is posted.
 
 ---
 
@@ -82,7 +82,7 @@ On the **first run**, all wars currently listed are stored as `skipped` and noth
     "webhook_url": "",
     "mention_role_id": ""
   },
-  "dotlan": {
+  "esi": {
     "contact": ""
   }
 }
@@ -92,7 +92,7 @@ On the **first run**, all wars currently listed are stored as `skipped` and noth
 |---|---|---|
 | `discord.webhook_url` | yes (unless dry run) | Full webhook URL `https://discord.com/api/webhooks/{id}/{token}`. Anyone who has it can post to the channel, so treat it as a password. |
 | `discord.mention_role_id` | no | Numeric Discord role ID to ping with each message (Developer Mode → right-click role → *Copy Role ID*). Leave empty for no ping. |
-| `dotlan.contact` | recommended | E-mail address or Discord handle. It is added to the HTTP `User-Agent` so the DOTLAN operator can contact you instead of blocking you. |
+| `esi.contact` | **strongly recommended** | Your e-mail address. ESI asks every app to identify itself with a contact in the `User-Agent` ([best practices](https://developers.eveonline.com/docs/services/esi/best-practices/)). The bot sends `eve-war-bot/<version> (<contact>; +https://github.com/Headruner/eve-war-bot) python-requests/<version>`. Files from 1.x with `dotlan.contact` still work. |
 
 The file is checked at startup. An empty webhook, a malformed URL, a non-numeric role ID or invalid JSON stops the bot with **exit code 2** and a clear log message. To check the files without starting the bot:
 
@@ -120,7 +120,7 @@ node "Docker host" {
   }
   node "container: eve-war-bot" {
     component "main.py\nscheduler" as M
-    component "scraper.py" as S
+    component "source.py" as S
     component "esi.py\nreport.py" as R
     component "store.py" as ST
     component "embeds.py\nbanner.py" as E
@@ -128,17 +128,16 @@ node "Docker host" {
   }
   database "volume: eve-war-bot-data\n/data/wars.db" as DB
 }
-cloud "evemaps.dotlan.net" as DOT
-cloud "esi.evetech.net\n(CCP ESI, public)" as ESI
+cloud "esi.evetech.net\n(CCP ESI, public routes)" as ESI
 cloud "images.evetech.net\n(EVE Image Server)" as IMG
 cloud "discord.com\nWebhook API" as DIS
 
 CR --> M
 CF --> M
 M --> S
-S --> DOT : HTTPS GET /wars
+S --> R : EsiClient
 M --> R
-R --> ESI : GET /wars/{id}, killmails,\nPOST /universe/names
+R --> ESI : GET /wars/, /wars/{id}/,\ncorporations, alliances,\nkillmails, POST /universe/names/
 M --> ST
 ST --> DB : SQLite
 M --> E
@@ -155,21 +154,23 @@ DIS ..> IMG : Discord fetches\nlogo URLs itself
 @startuml
 title One polling cycle (every poll_interval_min)
 participant "main" as M
-participant "scraper" as S
-participant "DOTLAN" as D
+participant "source" as S
+participant "ESI" as D
 database "wars.db" as DB
 participant "embeds/banner" as E
 participant "EVE Image Server" as I
 participant "notifier" as N
 participant "Discord" as X
 
-M -> S : fetch + parse
-S -> D : GET /wars (User-Agent with contact)
-D --> S : HTML
-S --> M : list<War>
-loop each war
-  M -> DB : INSERT OR IGNORE (state = pending | skipped | filtered)
+M -> S : newest war IDs
+S -> D : GET /wars/  (only after Expires; If-None-Match)
+D --> S : [war IDs] or 304
+S --> M : IDs above watermark, not stored yet
+loop each new ID (oldest first, max_new_per_cycle)
+  S -> D : GET /wars/{id}/, POST /universe/names/,\ncorporations / alliances
+  M -> DB : INSERT OR IGNORE (state = pending | filtered)
 end
+M -> DB : watermark = highest processed ID
 M -> DB : SELECT state='pending' ORDER BY declared_at
 loop batches of batch_embeds
   M -> M : build war report (ESI, see 4.6)
@@ -197,31 +198,44 @@ M -> M : write heartbeat, sleep
 @enduml
 ```
 
-### 4.3 Integration 1 — DOTLAN (data source)
+### 4.3 Integration 1 — CCP ESI: new wars (data source)
+
+Since 2.0 the bot reads wars only from ESI, CCP's official API. The [DOTLAN](https://evemaps.dotlan.net/wars) list that 1.x parsed is built from the same ESI data. Reading ESI directly removes the HTML parser, the dependency on a community site and its layout, and the robots.txt question.
 
 | Aspect | Detail |
 |---|---|
-| Endpoint | `GET https://evemaps.dotlan.net/wars` (`/wars/kills`, `/wars/mutual` and `/wars/open` via `dotlan.view`) |
-| Auth | none |
-| Format | HTML. DOTLAN has no public JSON API for this list, so the page is parsed (BeautifulSoup). |
-| Pagination | none, all active wars are on one page |
-| Frequency | `poll_interval_min` (default 15). DOTLAN is a community-run site, so keep this low. |
-| Headers | `User-Agent: eve-war-bot/1.3.0 (+<contact>)` |
-| Not used | `/war/{id}` pages — DOTLAN's `robots.txt` disallows them for bots, so the war report is built from ESI instead (4.6) |
+| Base URL | `https://esi.evetech.net` with **version-less routes** (`/wars/`, not `/latest/wars/`), as recommended in the ESI docs; configurable with `esi.base_url` |
+| Version | header `X-Compatibility-Date: <esi.compatibility_date>` (default `2025-08-26`). ESI returns the behaviour of that date and rejects future dates |
+| Auth | none: `/wars/`, `/wars/{id}/`, `/corporations/{id}/`, `/alliances/{id}/`, `/universe/names/` are public |
+| User-Agent | `eve-war-bot/2.0.0 (<esi.contact>; +https://github.com/Headruner/eve-war-bot) python-requests/<v>` |
+| Caching | a response is reused until its **`Expires`** time, so ESI is never asked earlier (`/wars/` is cached for up to 1 h). After that the request carries **`If-None-Match`** with the last `ETag`; a `304` means unchanged and costs 1 rate-limit token instead of 2 |
+| Rate limits | token buckets (`X-Ratelimit-Limit` / `-Remaining`): slows down below 10 % · `429` → waits `Retry-After` · old error limit (`X-ESI-Error-Limit-Remain` / `-Reset`, `420`) honoured · `5xx` retried with back-off |
+| Frequency | `source.poll_interval_min` (15). Because of the cache, a real request is only sent about once per hour |
 
-**Row structure and parsing.** Each table row has these cells: *Declared* · aggressor logo · aggressor name · defender logo · defender name · status · *War Report*. The header row has stray empty cells, so the parser does not count columns. It finds each piece by its URL pattern:
+**How new wars are found**
 
-| Data | Found by | Example |
-|---|---|---|
-| `war_id` (unique key) | link `/war/{id}` | `/war/763527` |
-| party name and type | links `/alliance/{Name}/wars` or `/corp/{Name}/wars`; first = aggressor, second = defender | `/corp/Les_Corbeaux_de_New_Eden/wars` |
-| full name | taken from the URL slug (`_` → space, URL-decoded), because link text is cut off with `...` | `From Hisec with Love Coalition` |
-| EVE entity ID | logo `src` `.../Alliance/{id}_32.png` or `.../Corporation/{id}_32.png` | `99003581` |
-| members | `Members: N` in the name cell | `54418` |
-| declared (UTC/EVE time) | `YYYY-MM-DD` and `HH:MM:SS` in either order | `2026-10-23T14:25:00Z` |
-| status | text `Mutual` / `Open For Allies` / none | `mutual` |
+1. `GET /wars/` returns the newest 2000 war IDs. War IDs only grow.
+2. Every ID **above the stored watermark** (`meta.watermark_war_id`) that is not yet in the database is a new war, processed **oldest first**, at most `source.max_new_per_cycle` (50) per cycle. After an outage the bot catches up in portions.
+3. For each new war:
 
-A row that cannot be parsed is logged and skipped. If the page has a table but **no** rows can be parsed, a `ScrapeError` is logged, because DOTLAN has probably changed its layout. The service keeps running either way. When this happens, update `scraper.py` and add a real saved copy of the page to `tests/fixtures/wars.html`.
+| Call | Gives |
+|---|---|
+| `GET /wars/{id}/` | `declared`, `mutual`, `open_for_allies`, aggressor / defender (`alliance_id` or `corporation_id`) |
+| `POST /universe/names/` | names of both sides |
+| `GET /corporations/{id}/` | `ticker`, `member_count` |
+| `GET /alliances/{id}/` + `/alliances/{id}/corporations/` | `ticker`, number of corporations. Members = sum of the corporations' `member_count`, only for alliances with ≤ `source.alliance_member_count_max_corps` (20) corporations; for bigger alliances the members are shown as unknown |
+
+4. The watermark is moved to the highest processed ID. A war that ESI lists but answers with 404 is recorded as `skipped` and not retried. A temporary ESI error stops the cycle, and the same war is tried again next cycle.
+
+**First run and upgrades**
+
+| Situation | Behaviour |
+|---|---|
+| New installation, `bootstrap_silent: true` | watermark = newest war ID; nothing is posted |
+| New installation, `bootstrap_silent: false` | all 2000 listed wars are candidates (in portions of `max_new_per_cycle`) |
+| Database from 1.x (DOTLAN) | watermark = highest war ID already stored. Wars declared since then are posted, older ones are not |
+
+**Detection time.** ESI caches `/wars/` for up to an hour, so a new war appears in Discord within about **15–75 minutes** of its declaration. DOTLAN had the same delay, because it reads the same ESI data.
 
 ### 4.4 Integration 2 — EVE Image Server (images)
 
@@ -230,7 +244,7 @@ A row that cannot be parsed is logged and skipped. If the page has a table but *
 | Alliance logo | `https://images.evetech.net/alliances/{id}/logo?size=128` |
 | Corporation logo | `https://images.evetech.net/corporations/{id}/logo?size=128` |
 | Auth | none (official CCP image service) |
-| Fallback | the DOTLAN 32 px logo URL found on the page |
+| Fallback | none needed: the entity ID always comes from ESI |
 
 The images are used in two ways:
 
@@ -247,21 +261,21 @@ The images are used in two ways:
   "content": "<@&123456789012345678>",
   "allowed_mentions": { "roles": ["123456789012345678"] },
   "embeds": [{
-    "author":   { "name": "NuKeDD. declared war", "url": "https://evemaps.dotlan.net/alliance/NuKeDD./wars",
+    "author":   { "name": "NuKeDD. declared war", "url": "https://evemaps.dotlan.net/alliance/NuKeDD.",
                   "icon_url": "https://images.evetech.net/alliances/99010678/logo?size=64" },
     "title":    "⚔ NuKeDD. → Fraternity.",
     "url":      "https://evemaps.dotlan.net/war/763527",
     "color":    12597547,
     "thumbnail":{ "url": "https://images.evetech.net/alliances/99003581/logo?size=128" },
     "fields": [
-      { "name": "Aggressor", "value": "**[NuKeDD.](…)**\n🛡 Alliance · 13 members", "inline": true },
-      { "name": "Defender",  "value": "**[Fraternity.](…)**\n🛡 Alliance · 54,418 members", "inline": true },
+      { "name": "Aggressor", "value": "**[NuKeDD.](…)** [NUKE]\n🛡 Alliance · 13 members · 1 corporations", "inline": true },
+      { "name": "Defender",  "value": "**[Fraternity.](…)** [FRAT]\n🛡 Alliance · 154 corporations", "inline": true },
       { "name": "Status",    "value": "Standard", "inline": true },
       { "name": "Declared (EVE time)", "value": "<t:1792765500:F>\n<t:1792765500:R>", "inline": true },
-      { "name": "Links", "value": "[War report](…) · [Aggressor wars](…) · [Defender wars](…)" }
+      { "name": "🔗 Links", "value": "[zKillboard war](…) · [DOTLAN war report](…) · [Aggressor kills](…) · [Defender kills](…)" }
     ],
     "image":    { "url": "attachment://war_763527.png" },
-    "footer":   { "text": "Source: DOTLAN EveMaps · War #763527" },
+    "footer":   { "text": "Source: EVE Online ESI · War #763527" },
     "timestamp":"2026-10-23T14:25:00+00:00"
   }]
 }
@@ -297,7 +311,7 @@ On top of this, the bot always waits at least `min_seconds_between_posts` (defau
 
 ### 4.6 Integration 4 — CCP ESI (war report content)
 
-The DOTLAN war page (`/war/{id}`) is built from data that CCP publishes through ESI, the official EVE API. DOTLAN's `robots.txt` does not allow bots on those pages, so the bot reads the same data straight from ESI. ESI is meant for programs, needs no login for these endpoints, and the DOTLAN war ID is used as the ESI war ID.
+The report uses the same ESI client as the war source (4.3): version-less routes, compatibility date, cache and rate limits. No login is needed for these routes.
 
 | Call | Used for |
 |---|---|
@@ -316,13 +330,13 @@ The DOTLAN war page (`/war/{id}`) is built from data that CCP publishes through 
 | 🤝 Defender allies | names of all allies, first `max_allies` shown, then "+N" |
 | 💥 Recent kills | newest `recent_kills` kills: ship (linked to zKillboard), victim, system, relative time. 🔴 = aggressor lost the ship, 🔵 = defender side lost it |
 | 📍 Hot systems | the 3 systems with the most kills among the fetched kill details |
-| 🔗 Links | DOTLAN war report · zKillboard war page · both parties' DOTLAN war lists |
+| 🔗 Links | zKillboard war page · DOTLAN war report · zKillboard pages of both parties (links for readers; the bot never reads them) |
 
 Kills are read only once the war has started; before that, the score shows 0. The report is stored as JSON (`wars.report_json`), so a restart does not lose it.
 
-**Caching and limits.** Names are cached in SQLite (`names` table), so each ID is looked up only once. ESI allows a limited number of failed requests: the client watches `X-ESI-Error-Limit-Remain` and pauses when it gets low, waits on HTTP 420 / 429, and retries 5xx errors. If ESI is unavailable, the war is still posted, just without the report section, and the report is added on a later update.
+**Caching and limits.** Names are cached in SQLite (`names` table), so each ID is looked up only once. All other responses follow the `Expires`/`ETag` rules from 4.3. If an extra report call fails, the war is still posted without the report section, and the report is added on a later update.
 
-**Versioning.** The base URL (`report.esi_base_url`, default `https://esi.evetech.net/latest`) and the `X-Compatibility-Date` header (`report.esi_compatibility_date`) can be configured. CCP is moving ESI to date-based versioning; if the `/latest/` routes are retired, change the base URL to `https://esi.evetech.net` and set a current compatibility date.
+**Versioning.** `esi.base_url` (default `https://esi.evetech.net`) and `esi.compatibility_date` apply to all ESI calls. To adopt newer ESI behaviour, read the ESI changelog and raise the date. Config files from 1.x with `report.esi_base_url` / `report.esi_compatibility_date` still work.
 
 **Example message with the report** (illustrative values)
 
@@ -330,7 +344,7 @@ Kills are read only once the war has started; before that, the score shows 0. Th
 ⚔ NuKeDD. → Fraternity.                                     [defender logo]
 Aggressor                     Defender                     Status
 NuKeDD. [NUKE]                Fraternity. [FRAT]           Standard
-🛡 Alliance · 13 members       🛡 Alliance · 54,418 members
+🛡 Alliance · 13 members       🛡 Alliance · 154 corporations
 🕒 Timeline
 Declared: 23 October 2026 16:25 (5 hours ago)
 Starts:   24 October 2026 16:25 (in 19 hours)
@@ -346,9 +360,9 @@ Ally Corp, Ally Alliance
 📍 Hot systems
 Jita (2)
 🔗 Links
-DOTLAN war report · zKillboard · Aggressor wars · Defender wars
+zKillboard war · DOTLAN war report · Aggressor kills · Defender kills
 [ banner: aggressor logo  VS  defender logo ]
-Source: DOTLAN EveMaps + ESI · War #763527 · report updated • today 21:30
+Source: EVE Online ESI · War #763527 · report updated • today 21:30
 ```
 
 ### 4.7 Live report updates (editing the Discord message)
@@ -404,7 +418,7 @@ SQLite file `/data/wars.db` on the named Docker volume `eve-war-bot-data`. The v
 
 ```sql
 CREATE TABLE wars (
-  war_id             INTEGER PRIMARY KEY,   -- DOTLAN war id = dedup key
+  war_id             INTEGER PRIMARY KEY,   -- CCP war id = dedup key
   declared_at        TEXT,
   payload            TEXT NOT NULL,         -- parsed War as JSON (resend after restart)
   state              TEXT NOT NULL,         -- pending | sent | skipped | filtered | failed
@@ -418,18 +432,18 @@ CREATE TABLE wars (
   attachments_json   TEXT,                  -- Discord attachment ids (banner) for edits
   live_done          INTEGER NOT NULL DEFAULT 0   -- 1 = message no longer updated
 );
-CREATE TABLE meta  (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- bootstrapped_at
+CREATE TABLE meta  (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- bootstrapped_at, watermark_war_id
 CREATE TABLE names (id INTEGER PRIMARY KEY, name TEXT, category TEXT, updated_at TEXT);  -- ESI name cache
 ```
 
-A database created by v1.0 is upgraded automatically on start: the new columns are added and existing rows are kept.
+Databases from older versions are upgraded automatically on start: missing columns are added and existing rows are kept. A 1.x database (DOTLAN) gets its watermark from the highest stored war ID (see 4.3).
 
 ### 5.3 State machine
 
 ```plantuml
 @startuml
 title War notification state
-[*] --> skipped  : first seen during\nsilent bootstrap
+[*] --> skipped  : listed by ESI but 404,\nor stored by 1.x bootstrap
 [*] --> filtered : first seen,\nfilters do not match
 [*] --> pending  : first seen,\nmatches filters
 pending --> sent    : Discord 2xx
@@ -445,10 +459,10 @@ failed --> [*]
 
 ### 5.4 Why duplicates cannot happen
 
-1. `war_id` is the primary key, and new wars are written with `INSERT OR IGNORE`. Fetching the same page again never resets a war that is already stored.
+1. `war_id` is the primary key, and new wars are written with `INSERT OR IGNORE`. Reading the same ESI list again never resets a war that is already stored, and IDs at or below the watermark are never read again.
 2. Only rows in state `pending` are sent. A row becomes `sent` only after Discord confirms with 2xx.
 3. The database runs in WAL mode with `synchronous=FULL`, so a status change is on disk before the next message is sent.
-4. Wars that are `pending` when the container stops are saved with their full data (`payload`). They are sent after restart, even if DOTLAN no longer lists them.
+4. Wars that are `pending` when the container stops are saved with their full data (`payload`). They are sent after restart.
 
 **Remaining edge case.** If the container is killed in the few milliseconds between Discord accepting a message and the database saving `sent`, that one message is sent again after restart. Fully ruling this out is not possible with a webhook, because Discord webhooks have no "send only once" key. Normal stops (`docker stop` sends SIGTERM) let the current message finish before the bot exits.
 
@@ -476,9 +490,12 @@ docker compose down -v
 
 | Key | Default | Description |
 |---|---|---|
-| `dotlan.view` | `""` | `""` active · `kills` · `mutual` · `open` |
-| `dotlan.poll_interval_min` | 15 | minutes between checks |
-| `dotlan.bootstrap_silent` | true | first run stores existing wars without posting them |
+| `source.poll_interval_min` | 15 | minutes between cycles (ESI's cache limits real requests to about 1/hour) |
+| `source.bootstrap_silent` | true | first run remembers the newest war ID and posts nothing |
+| `source.max_new_per_cycle` | 50 | new wars handled per cycle (catch-up after outages) |
+| `source.alliance_member_count_max_corps` | 20 | sum member counts only for alliances up to this many corporations |
+| `esi.base_url` | `https://esi.evetech.net` | ESI address (version-less routes) |
+| `esi.compatibility_date` | `2025-08-26` | `X-Compatibility-Date` header |
 | `discord.username` / `avatar_url` | `EVE War Watch` / – | name and picture the webhook posts as |
 | `discord.batch_embeds` | 1 | wars per message (1–10) |
 | `discord.min_seconds_between_posts` | 2 | pause between posts |
@@ -486,7 +503,6 @@ docker compose down -v
 | `images.logo_size` | 128 | thumbnail size (32/64/128/256) |
 | `images.banner_enabled` | true | attach the generated VS banner |
 | `report.enabled` | true | add the war report (ESI) to messages |
-| `report.esi_base_url` / `esi_compatibility_date` | `…/latest` / `2025-08-26` | ESI address and version header |
 | `report.recent_kills` | 5 | kills listed in the message |
 | `report.kill_details_limit` | 25 | newest kills read in detail (for kills and hot systems) |
 | `report.max_killmail_pages` | 1 | killmail pages read (2000 references each) |
@@ -496,11 +512,11 @@ docker compose down -v
 | `report.track_days` | 7 | stop updating a message after this many days |
 | `filters.watch_entity_ids` | `[]` | only wars that involve these alliance/corp IDs (empty = all wars) |
 | `filters.statuses` | all | which of `none`, `open_for_allies`, `mutual` to post |
-| `filters.min_defender_members` | 0 | skip wars against small defenders |
+| `filters.min_defender_members` | 0 | skip wars against small defenders (unknown size, e.g. big alliances, is never skipped) |
 | `runtime.dry_run` | false | log payloads instead of posting |
 | `runtime.log_level` | INFO | DEBUG / INFO / WARNING |
 
-Wars that do not match the filters are stored as `filtered`. They will **not** be posted later, even if you change the filters afterwards.
+Keys from 1.x (`dotlan.*`, `report.esi_*`) are still read when the new ones are missing. Wars that do not match the filters are stored as `filtered`. They will **not** be posted later, even if you change the filters afterwards.
 
 ---
 
@@ -510,7 +526,7 @@ Wars that do not match the filters are stored as `filtered`. They will **not** b
 |---|---|
 | Base image | `python:3.12-slim` + `fonts-dejavu-core` (banner text) |
 | User | non-root `bot` (uid 10001) |
-| Entry point | `python -m app.main` (extra arguments: `--once`, `--check-config`, `--html-file`; `install [--force]` unpacks the deployment bundle) |
+| Entry point | `python -m app.main` (extra arguments: `--once`, `--check-config`; `install [--force]` unpacks the deployment bundle; `stats [--months N] [--json]`) |
 | Restart | `unless-stopped` |
 | Memory | `mem_limit: 256m`, `memswap_limit: 384m`, `mem_reservation: 96m` (measured use ≈ 45–80 MB) |
 | CPU / processes | `cpus: 0.5`, `pids_limit: 64` |
@@ -623,7 +639,7 @@ For a private GitHub repo, the first line won't work. Install Docker with your u
 | PC | `scripts/publish-nexus.ps1` | new `:<version>` and `:latest` in Nexus |
 | VM | `bash scripts/bot.sh update` | pulls `:latest`, runs `install --force` (refreshes compose/scripts, keeps config, secrets, `.env`), restarts |
 
-To stay on a fixed version, set `EVE_BOT_IMAGE=<registry>/eve-war-bot:1.3.0` in `.env` on the VM. `bot.sh` detects a registry setup by the missing `Dockerfile` or a registry image in `.env`, and then pulls instead of building.
+To stay on a fixed version, set `EVE_BOT_IMAGE=<registry>/eve-war-bot:2.0.0` in `.env` on the VM. `bot.sh` detects a registry setup by the missing `Dockerfile` or a registry image in `.env`, and then pulls instead of building.
 
 ## 8. Tests
 
@@ -634,13 +650,16 @@ pytest -q
 
 GitHub Actions runs the same tests on every push and pull request.
 
-The tests cover parsing (full names, IDs, statuses, both date formats), the silent first run, no re-posting after a restart (a new store object on the same database file), filters, the multipart banner upload, the war report (score, allies, kills, efficiency) and live updates (an edit only when the report changes, a final edit when the war ends, then no more edits), and that dry runs never touch the real database, and that `install` unpacks the bundle without overwriting your config or secrets. They run against a fake ESI client and a mock Discord webhook server.
+The tests cover:
+- **War source:** building wars from ESI (names, tickers, members, corporations, status, links), silent bootstrap with the watermark, no re-posting after restarts, catch-up in portions, upgrade from a 1.x database, retry after ESI errors, 404 handling.
+- **ESI rules:** version-less route, `X-Compatibility-Date`, `User-Agent` format, `Expires` cache (no request before expiry), `ETag` / `If-None-Match` / 304, `429` with `Retry-After`. These run against a local mock ESI HTTP server.
+- **Everything else:** filters, the multipart banner, the war report and live updates, dry runs, `install`, configuration (including 1.x keys and a Windows BOM), and the statistics algorithm.
 
-`tests/fixtures/wars.html` is rebuilt from the live page structure (23 Oct 2026). For stronger regression tests, replace it with a real copy saved from the browser.
+They run against a fake ESI class, a mock ESI HTTP server and a mock Discord webhook server. They never call the real ESI or Discord.
 
 ## 9. Notes and open points
 
-- Check DOTLAN's terms of use and the allowed polling frequency, or ask the site owner whether there is a feed.
-- Confirm with one real war that DOTLAN's war ID returns the same war from ESI `GET /wars/{id}/` (expected, because DOTLAN takes its data from ESI).
+- Before production, check that the default `esi.compatibility_date` is accepted (the start log shows it; ESI answers with an error for unsupported dates) and consider raising it to a current date after reading the ESI changelog.
+- Alliance member counts for big alliances would need one call per corporation, so they are not summed. Raise `alliance_member_count_max_corps` if needed, but watch the ESI rate limits.
 - ISK value per kill is not part of ESI; it could be added from zKillboard's API if needed. ESI's per-side `isk_destroyed` totals are used for the score.
 - War end and status changes are shown by editing the existing message; separate "war ended" messages are not in scope yet.

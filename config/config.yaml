@@ -1,11 +1,16 @@
 # EVE War Bot - non-secret settings. Secrets go to credentials.json.
 
-dotlan:
-  base_url: https://evemaps.dotlan.net
-  view: ""                    # "" = active wars | kills | mutual | open
-  poll_interval_min: 15       # be polite to DOTLAN (community site)
+source:                       # new wars come from CCP ESI GET /wars/ (2.0: no DOTLAN scraping)
+  poll_interval_min: 15       # ESI caches /wars/ for up to 1 h; the bot reuses the cached
+                              # list until its Expires time, so this costs no extra requests
   request_timeout_s: 20
-  bootstrap_silent: true      # 1st run: store current wars, do NOT post them
+  bootstrap_silent: true      # 1st run: remember the newest war ID, do NOT post old wars
+  max_new_per_cycle: 50       # after a long outage, catch up in portions
+  alliance_member_count_max_corps: 20   # sum members only for alliances up to N corps
+
+esi:
+  base_url: https://esi.evetech.net     # version-less routes (ESI docs)
+  compatibility_date: "2025-08-26"      # X-Compatibility-Date header (YYYY-MM-DD)
 
 discord:
   username: "EVE War Watch"
@@ -19,10 +24,8 @@ images:
   logo_size: 128              # 32 | 64 | 128 | 256
   banner_enabled: true        # attach generated "A VS D" PNG banner
 
-report:                       # war report like DOTLAN /war/{id}, built from CCP ESI
+report:                       # war report (score, allies, kills) from CCP ESI
   enabled: true
-  esi_base_url: https://esi.evetech.net/latest
-  esi_compatibility_date: "2025-08-26"   # sent as X-Compatibility-Date header
   recent_kills: 5             # kills listed in the message
   kill_details_limit: 25      # newest killmails fetched in detail (for systems/kills)
   max_killmail_pages: 1       # 1 page = up to 2000 killmail references

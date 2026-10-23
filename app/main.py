@@ -3,7 +3,8 @@
     python -m app.main                # run forever (Docker default)
     python -m app.main --once         # single polling cycle, then exit
     python -m app.main --check-config # validate config + credentials, then exit
-    python -m app.main --once --html-file tests/fixtures/wars.html   # offline parse
+    python -m app.main install        # unpack server files from the image
+    python -m app.main stats          # wars declared on the 1st of each month
 """
 from __future__ import annotations
 
@@ -20,11 +21,15 @@ from . import __version__
 from .config import ConfigError, Credentials, Settings, load_credentials, load_settings
 from .discord_notifier import DiscordNotifier, MessageGone, NotifyError, WebhookInvalid
 from .embeds import build_embed, build_payload
-from .esi import EsiClient
+import requests
+
+from .esi import EsiClient, EsiError
 from .models import War
 from .report import build_report, is_over
-from .scraper import ScrapeError, fetch_html, parse_wars
+from .source import EsiWarSource
 from .store import WarStore
+
+PROJECT_URL = "https://github.com/Headruner/eve-war-bot"
 
 log = logging.getLogger("eve_war_bot")
 _stop = threading.Event()
@@ -33,7 +38,9 @@ _stop = threading.Event()
 def _matches(w: War, s: Settings) -> bool:
     if w.status not in s.statuses:
         return False
-    if s.min_defender_members and (w.defender.members or 0) < s.min_defender_members:
+    # unknown size (alliances with many corporations) is never filtered out
+    if (s.min_defender_members and w.defender.members is not None
+            and w.defender.members < s.min_defender_members):
         return False
     if s.watch_entity_ids:
         ids = {w.aggressor.entity_id, w.defender.entity_id}
@@ -43,18 +50,19 @@ def _matches(w: War, s: Settings) -> bool:
 
 
 def user_agent(creds: Credentials) -> str:
-    return f"eve-war-bot/{__version__} (+{creds.contact or 'no-contact-configured'})"
+    """ESI best practice: app/version, contact e-mail, source URL, the HTTP library."""
+    parts = "; ".join(p for p in (creds.contact, f"+{PROJECT_URL}") if p)
+    return f"eve-war-bot/{__version__} ({parts}) python-requests/{requests.__version__}"
 
 
-def make_esi(s: Settings, creds: Credentials, store: WarStore) -> EsiClient | None:
-    if not s.report_enabled:
-        return None
+def make_esi(s: Settings, creds: Credentials, store: WarStore | None = None) -> EsiClient:
     return EsiClient(s.esi_base_url, user_agent(creds), s.request_timeout_s,
-                     s.esi_compatibility_date, store.names_get, store.names_put)
+                     s.esi_compatibility_date,
+                     store.names_get if store else None, store.names_put if store else None)
 
 
 def _report(esi: EsiClient | None, s: Settings, war_id: int) -> dict | None:
-    if not esi:
+    if not esi or not s.report_enabled:
         return None
     try:
         return build_report(esi, war_id, s.report_recent_kills, s.report_kill_details_limit,
@@ -74,26 +82,64 @@ def _fingerprint(r: dict | None) -> tuple:
             r.get("retracted"), r.get("mutual"), r.get("open_for_allies"))
 
 
+def _watermark(store: WarStore) -> int | None:
+    v = store.get_meta("watermark_war_id")
+    return int(v) if v is not None else None
+
+
+def collect_new_wars(s: Settings, store: WarStore, source: EsiWarSource) -> int:
+    """Read the newest war IDs from ESI and store the new wars. Returns how many."""
+    ids = source.newest_war_ids()
+    if not ids:
+        log.warning("ESI returned no war IDs")
+        return 0
+    wm = _watermark(store)
+    if wm is None:
+        if store.bootstrapped:
+            # database from 1.x (DOTLAN): continue after the newest war it knew
+            wm = store.max_war_id() or ids[-1]
+            log.info("Upgrade from 1.x: continuing after war %s", wm)
+        elif s.bootstrap_silent:
+            wm = ids[-1]
+            log.info("Bootstrap: newest war ID is %s - wars declared from now on will be "
+                     "posted (no old notifications).", wm)
+        else:
+            wm = 0
+        store.set_meta("watermark_war_id", str(wm))
+        if not store.bootstrapped:
+            store.set_meta("bootstrapped_at", datetime.now(timezone.utc).isoformat())
+
+    candidates = [i for i in ids if i > wm and not store.has(i)]
+    todo = candidates[: s.max_new_per_cycle]                       # oldest first
+    new, done = 0, 0
+    for wid in todo:
+        if _stop.is_set():
+            break
+        try:
+            w = source.war(wid)
+        except EsiError as e:
+            log.warning("Could not read war %s from ESI (%s) - retry next cycle", wid, e)
+            break                                                  # keep order, retry later
+        if w is None:
+            store.add_marker(wid, "skipped")
+        else:
+            new += store.add_if_new(w, "pending" if _matches(w, s) else "filtered")
+        done += 1
+    if done:
+        store.set_meta("watermark_war_id", str(max(wm, todo[done - 1])))
+    rest = len(candidates) - len(todo)
+    log.info("ESI: %d war IDs listed, %d new%s.", len(ids), new,
+             f", {rest} more next cycle" if rest > 0 else "")
+    return new
+
+
 def run_cycle(s: Settings, creds: Credentials, store: WarStore, notifier: DiscordNotifier,
-              html_file: str | None = None, esi: EsiClient | None = None) -> None:
+              esi: EsiClient, source: EsiWarSource | None = None) -> None:
     ua = user_agent(creds)
+    source = source or EsiWarSource(esi, s.alliance_member_count_max_corps)
 
-    # 1) READ ----------------------------------------------------------------
-    html = (Path(html_file).read_text(encoding="utf-8") if html_file
-            else fetch_html(s.dotlan_base_url, s.dotlan_view, ua, s.request_timeout_s))
-    wars = parse_wars(html, s.dotlan_base_url)
-
-    # 2) STORE (dedup) -------------------------------------------------------
-    silent = s.bootstrap_silent and not store.bootstrapped
-    new = 0
-    for w in sorted(wars, key=lambda x: (x.declared_at or datetime.min.replace(tzinfo=timezone.utc), x.war_id)):
-        state = "skipped" if silent else ("pending" if _matches(w, s) else "filtered")
-        new += store.add_if_new(w, state)
-    if not store.bootstrapped:
-        store.set_meta("bootstrapped_at", datetime.now(timezone.utc).isoformat())
-        if silent:
-            log.info("Bootstrap: stored %d existing wars silently (no notifications).", len(wars))
-    log.info("Parsed %d wars, %d new.", len(wars), new)
+    # 1+2) READ new wars from ESI and STORE them (dedup by war ID) -----------
+    collect_new_wars(s, store, source)
 
     # 3) NOTIFY --------------------------------------------------------------
     pending = store.pending()
@@ -120,7 +166,7 @@ def run_cycle(s: Settings, creds: Credentials, store: WarStore, notifier: Discor
             log.error("Notify failed for %s: %s", ids, e)
 
     # 4) LIVE UPDATES of already posted messages ----------------------------
-    if esi and s.live_updates:
+    if s.report_enabled and s.live_updates:
         update_live_reports(s, creds, store, notifier, esi)
 
 
@@ -210,15 +256,13 @@ def main(argv: list[str] | None = None) -> int:
         except ConfigError:
             creds = Credentials(webhook_url="")
         from .stats import run as run_stats
-        esi = EsiClient(s.esi_base_url, user_agent(creds), s.request_timeout_s,
-                        s.esi_compatibility_date)
+        esi = make_esi(s, creds)
         print(run_stats(sargs.months, sargs.json, esi, s.sqlite_path))
         return 0
 
     ap = argparse.ArgumentParser(prog="eve-war-bot")
     ap.add_argument("--once", action="store_true", help="run a single cycle and exit")
     ap.add_argument("--check-config", action="store_true", help="validate files and exit")
-    ap.add_argument("--html-file", help="parse a saved HTML file instead of fetching DOTLAN")
     args = ap.parse_args(argv)
 
     try:
@@ -247,19 +291,23 @@ def main(argv: list[str] | None = None) -> int:
     notifier = DiscordNotifier(creds.webhook_url, s.min_seconds_between_posts,
                                dry_run=s.dry_run)
     esi = make_esi(s, creds, store)
-    log.info("eve-war-bot %s started (interval %d min, report=%s, live=%s, dry_run=%s, stored=%s)",
-             __version__, s.poll_interval_min, s.report_enabled, s.live_updates, s.dry_run,
-             store.stats())
+    log.info("eve-war-bot %s started (source=ESI %s, compatibility date %s, interval %d min, "
+             "report=%s, live=%s, dry_run=%s, stored=%s)",
+             __version__, s.esi_base_url, s.esi_compatibility_date, s.poll_interval_min,
+             s.report_enabled, s.live_updates, s.dry_run, store.stats())
+    if not creds.contact:
+        log.warning("No contact in credentials.json (esi.contact). ESI asks every app to put "
+                    "an e-mail address into its User-Agent.")
     try:
         while not _stop.is_set():
             try:
-                run_cycle(s, creds, store, notifier, args.html_file, esi)
+                run_cycle(s, creds, store, notifier, esi)
                 _heartbeat(s.heartbeat_file)
             except WebhookInvalid as e:
                 log.critical("Discord webhook rejected (%s). Fix credentials.json.", e)
                 return 3
-            except ScrapeError as e:
-                log.error("Scrape error: %s", e)
+            except EsiError as e:
+                log.error("ESI error: %s", e)
             except Exception as e:                       # keep the service alive
                 log.exception("Cycle failed: %s", e)
             if args.once:

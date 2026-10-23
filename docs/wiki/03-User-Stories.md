@@ -4,20 +4,22 @@
 
 Every story has its own page. The ID is coded as **`US-<epic>.<number>`**: `US-04.03` is story 3 of epic `EP-04`. Each story belongs to one feature `F-<epic>.<n>` from the [FRD](02-FRD.md).
 
-Status legend: **Done** = implemented in release 1.3.0 · **Planned** = in the backlog. *Field* = observed on a real installation, not only in tests.
+Status legend: **Done** = implemented in release 2.0.0 · **Planned** = in the backlog. *Field* = observed on a real installation, not only in tests.
 
 ## EP-01 War detection
 
-*Find every new war declaration on DOTLAN reliably and exactly once.*
+*Find every new war declaration in CCP's official API (ESI) reliably and exactly once.*
 
 | ID | Story | Feature | Priority | Status | Auto tests | Manual tests | Field |
 |---|---|---|---|---|---:|---:|---|
-| [US-01.01](user-stories/US-01.01.md) | Scheduled polling of the DOTLAN wars list | F-01.1 | Must | Done | 0 | 2 | ◐ |
-| [US-01.02](user-stories/US-01.02.md) | Parse each war row | F-01.2 | Must | Done | 2 | 2 | ◐ |
+| [US-01.01](user-stories/US-01.01.md) | Scheduled polling of ESI for new wars | F-01.1 | Must | Done | 1 | 2 | — |
+| [US-01.02](user-stories/US-01.02.md) | War details from ESI | F-01.2 | Must | Done | 2 | 2 | — |
 | [US-01.03](user-stories/US-01.03.md) | Use full entity names | F-01.2 | Should | Done | 1 | 1 | — |
-| [US-01.04](user-stories/US-01.04.md) | Notify each war only once | F-01.3 | Must | Done | 1 | 2 | — |
-| [US-01.05](user-stories/US-01.05.md) | Silent first run | F-01.4 | Must | Done | 1 | 1 | ✔ |
-| [US-01.06](user-stories/US-01.06.md) | Survive DOTLAN layout changes | F-01.5 | Should | Done | 0 | 1 | — |
+| [US-01.04](user-stories/US-01.04.md) | Notify each war only once | F-01.3 | Must | Done | 2 | 2 | — |
+| [US-01.05](user-stories/US-01.05.md) | Silent first run | F-01.4 | Must | Done | 1 | 1 | — |
+| [US-01.06](user-stories/US-01.06.md) | Survive ESI errors | F-01.5 | Must | Done | 3 | 1 | — |
+| [US-01.07](user-stories/US-01.07.md) | Follow the ESI rules | F-01.5 | Must | Done | 4 | 2 | — |
+| [US-01.08](user-stories/US-01.08.md) | Upgrade from 1.x without old posts | F-01.4 | Must | Done | 3 | 1 | — |
 
 ## EP-02 Discord delivery
 
@@ -30,7 +32,7 @@ Status legend: **Done** = implemented in release 1.3.0 · **Planned** = in the b
 | [US-02.03](user-stories/US-02.03.md) | Detect an invalid webhook | F-02.2 | Must | Done | 0 | 1 | — |
 | [US-02.04](user-stories/US-02.04.md) | Ping a role for new wars | F-02.3 | Could | Done | 0 | 1 | — |
 | [US-02.05](user-stories/US-02.05.md) | Several wars in one message | F-02.4 | Could | Done | 1 | 1 | — |
-| [US-02.06](user-stories/US-02.06.md) | Filter which wars are posted | F-02.5 | Should | Done | 1 | 1 | — |
+| [US-02.06](user-stories/US-02.06.md) | Filter which wars are posted | F-02.5 | Should | Done | 2 | 1 | — |
 
 ## EP-03 Rich message content
 
@@ -40,11 +42,11 @@ Status legend: **Done** = implemented in release 1.3.0 · **Planned** = in the b
 |---|---|---|---|---|---:|---:|---|
 | [US-03.01](user-stories/US-03.01.md) | Show alliance/corporation logos | F-03.1 | Must | Done | 1 | 2 | — |
 | [US-03.02](user-stories/US-03.02.md) | Attach a VS banner | F-03.2 | Could | Done | 1 | 2 | — |
-| [US-03.03](user-stories/US-03.03.md) | Colours, local times and links | F-03.3 | Should | Done | 1 | 2 | — |
+| [US-03.03](user-stories/US-03.03.md) | Colours, local times and links | F-03.3 | Should | Done | 3 | 2 | — |
 
 ## EP-04 War report & live updates
 
-*Show the content of a DOTLAN war report and keep it current while the war runs.*
+*Show a full war report (like DOTLAN's war page) and keep it current while the war runs.*
 
 | ID | Story | Feature | Priority | Status | Auto tests | Manual tests | Field |
 |---|---|---|---|---|---:|---:|---|
@@ -60,8 +62,8 @@ Status legend: **Done** = implemented in release 1.3.0 · **Planned** = in the b
 
 | ID | Story | Feature | Priority | Status | Auto tests | Manual tests | Field |
 |---|---|---|---|---|---:|---:|---|
-| [US-05.01](user-stories/US-05.01.md) | Credentials in a JSON file with validation | F-05.1 | Must | Done | 1 | 4 | ✔ |
-| [US-05.02](user-stories/US-05.02.md) | Settings in a YAML file | F-05.2 | Must | Done | 0 | 1 | — |
+| [US-05.01](user-stories/US-05.01.md) | Credentials in a JSON file with validation | F-05.1 | Must | Done | 2 | 4 | ✔ |
+| [US-05.02](user-stories/US-05.02.md) | Settings in a YAML file | F-05.2 | Must | Done | 1 | 1 | — |
 | [US-05.03](user-stories/US-05.03.md) | Dry run | F-05.3 | Should | Done | 1 | 2 | ✔ |
 
 ## EP-06 Deployment & operations
@@ -91,6 +93,6 @@ Status legend: **Done** = implemented in release 1.3.0 · **Planned** = in the b
 
 ## Summary
 
-- Stories: **34** · done: **33** · planned: **1**
-- With automated tests: **19** · with manual scenarios: **33**
+- Stories: **36** · done: **35** · planned: **1**
+- With automated tests: **24** · with manual scenarios: **35**
 - Field column: ✔ verified · ◐ partly or simulated · — pending

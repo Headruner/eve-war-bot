@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Suites** | Sanity (6 scenarios, 7 SP) · Regression (30 scenarios, 77 SP) |
-| **Total** | **84 SP** |
-| **Updated** | 2026-10-24 |
+| **Suites** | Sanity (6 scenarios, 7 SP) · Regression (32 scenarios, 84 SP) |
+| **Total** | **91 SP** |
+| **Updated** | 2026-10-24 (2.0.0) |
 
 ---
 
@@ -48,8 +48,8 @@ Use a **test channel** with its own webhook for every scenario that posts. Scena
 | ID | Scenario | Stories | SP |
 |---|---|---|---:|
 | [MT-R-01](#mt-r-01) | Silent bootstrap on a fresh installation | [US-01.05](user-stories/US-01.05.md) | 2 |
-| [MT-R-02](#mt-r-02) | Parsed data matches DOTLAN | [US-01.02](user-stories/US-01.02.md), [US-01.03](user-stories/US-01.03.md) | 3 |
-| [MT-R-03](#mt-r-03) | A real new war is posted within 20 minutes | [US-01.01](user-stories/US-01.01.md), [US-01.04](user-stories/US-01.04.md), [US-02.01](user-stories/US-02.01.md) | 3 |
+| [MT-R-02](#mt-r-02) | War data matches ESI and DOTLAN | [US-01.02](user-stories/US-01.02.md), [US-01.03](user-stories/US-01.03.md) | 3 |
+| [MT-R-03](#mt-r-03) | A real new war is posted in time | [US-01.01](user-stories/US-01.01.md), [US-01.04](user-stories/US-01.04.md), [US-02.01](user-stories/US-02.01.md) | 5 |
 | [MT-R-04](#mt-r-04) | Empty webhook is rejected | [US-05.01](user-stories/US-05.01.md) | 1 |
 | [MT-R-05](#mt-r-05) | Credentials folder instead of file | [US-05.01](user-stories/US-05.01.md), [US-06.04](user-stories/US-06.04.md) | 1 |
 | [MT-R-06](#mt-r-06) | Invalid JSON is rejected | [US-05.01](user-stories/US-05.01.md) | 1 |
@@ -76,8 +76,10 @@ Use a **test channel** with its own webhook for every scenario that posts. Scena
 | [MT-R-27](#mt-r-27) | Settings take effect after restart | [US-05.02](user-stories/US-05.02.md) | 1 |
 | [MT-R-28](#mt-r-28) | Dry run leaves real data untouched | [US-05.03](user-stories/US-05.03.md) | 1 |
 | [MT-R-29](#mt-r-29) | Many wars at once (rate limit) | [US-02.02](user-stories/US-02.02.md) | 3 |
-| [MT-R-30](#mt-r-30) | DOTLAN layout change | [US-01.06](user-stories/US-01.06.md) | 2 |
-| | **Total regression** | | **77** |
+| [MT-R-30](#mt-r-30) | ESI outage and recovery | [US-01.06](user-stories/US-01.06.md), [US-01.07](user-stories/US-01.07.md) | 2 |
+| [MT-R-31](#mt-r-31) | ESI request rules | [US-01.07](user-stories/US-01.07.md) | 2 |
+| [MT-R-32](#mt-r-32) | Upgrade a 1.x installation | [US-01.08](user-stories/US-01.08.md) | 3 |
+| | **Total regression** | | **84** |
 
 ## 4. Test helpers
 
@@ -133,7 +135,7 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 1. `bash scripts/bot.sh test`
 2. Look at the Discord channel.
 
-**Expected result:** Log shows `Parsed NN wars` and `[DRY RUN] POST` lines; no message in Discord.
+**Expected result:** Log shows `ESI: NNNN war IDs listed`; `[DRY RUN] POST` lines only if there are new wars; no message in Discord.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
@@ -183,7 +185,7 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 1. `bash scripts/bot.sh restart`
 2. Wait for the first cycle in the log.
 
-**Expected result:** `Parsed NN wars, 0 new.`; no new message for the same war.
+**Expected result:** `ESI: NNNN war IDs listed, 0 new.`; no new message for the same war.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
@@ -198,7 +200,7 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 
 1. `bash scripts/bot.sh logs`, watch for 16 minutes.
 
-**Expected result:** A `Parsed NN wars` line every ~15 minutes; no ERROR lines.
+**Expected result:** An `ESI: ... war IDs listed` line every ~15 minutes; no ERROR lines.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
@@ -219,11 +221,11 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
 <a id="mt-r-02"></a>
-### MT-R-02 — Parsed data matches DOTLAN
+### MT-R-02 — War data matches ESI and DOTLAN
 
 **Suite:** Regression · **Estimate:** 3 SP · **Stories:** [US-01.02](user-stories/US-01.02.md), [US-01.03](user-stories/US-01.03.md)
 
-**Preconditions:** Bot running; DOTLAN wars page open in a browser.
+**Preconditions:** Bot running with several posted wars; DOTLAN wars page open in a browser as an independent cross-check.
 
 **Steps**
 
@@ -235,18 +237,18 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
 <a id="mt-r-03"></a>
-### MT-R-03 — A real new war is posted within 20 minutes
+### MT-R-03 — A real new war is posted in time
 
-**Suite:** Regression · **Estimate:** 3 SP · **Stories:** [US-01.01](user-stories/US-01.01.md), [US-01.04](user-stories/US-01.04.md), [US-02.01](user-stories/US-02.01.md)
+**Suite:** Regression · **Estimate:** 5 SP · **Stories:** [US-01.01](user-stories/US-01.01.md), [US-01.04](user-stories/US-01.04.md), [US-02.01](user-stories/US-02.01.md)
 
 **Preconditions:** Bot running ≥ 1 cycle.
 
 **Steps**
 
-1. Watch DOTLAN for a new war (top of the list).
-2. Note the time it appears; check Discord.
+1. Note a new war on DOTLAN or zKillboard and its declared time.
+2. Check Discord and the log.
 
-**Expected result:** Message appears ≤ 20 min after the war is listed on DOTLAN; exactly once.
+**Expected result:** Message appears ≤ 75 min after the declaration (ESI cache up to 1 h + poll interval); exactly once.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
@@ -495,7 +497,7 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 
 **Suite:** Regression · **Estimate:** 5 SP · **Stories:** [US-06.03](user-stories/US-06.03.md)
 
-**Preconditions:** Test copy; set `dotlan.base_url` to an unreachable address and `poll_interval_min: 1`.
+**Preconditions:** Test copy; set `esi.base_url` to an unreachable address and `poll_interval_min: 1`.
 
 **Steps**
 
@@ -667,16 +669,49 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
 
 <a id="mt-r-30"></a>
-### MT-R-30 — DOTLAN layout change
+### MT-R-30 — ESI outage and recovery
 
-**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-01.06](user-stories/US-01.06.md)
+**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-01.06](user-stories/US-01.06.md), [US-01.07](user-stories/US-01.07.md)
 
-**Preconditions:** Test copy; a saved wars page edited to remove all `/war/` links.
+**Preconditions:** Test copy; bot running and bootstrapped.
 
 **Steps**
 
-1. `docker compose run --rm -e DRY_RUN=true eve-war-bot --once --html-file /app/config/broken.html` (file put into `config/`).
+1. Set `esi.base_url` to `https://esi.evetech.net/does-not-exist`, restart, wait one cycle.
+2. Restore the URL, restart, re-queue one war.
 
-**Expected result:** `Scrape error: No war rows found - DOTLAN layout may have changed.`; exit 0.
+**Expected result:** First: `ESI error: ...` in the log, container keeps running; after restoring: the war is posted, no repeats.
+
+**Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
+
+<a id="mt-r-31"></a>
+### MT-R-31 — ESI request rules
+
+**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-01.07](user-stories/US-01.07.md)
+
+**Preconditions:** Bot running with `runtime.log_level: DEBUG` on a test copy.
+
+**Steps**
+
+1. Watch two cycles within the same hour.
+2. Check the start log for compatibility date and contact warning.
+
+**Expected result:** Second cycle sends no `/wars/` request (cache); no `No contact` warning when `esi.contact` is set.
+
+**Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
+
+<a id="mt-r-32"></a>
+### MT-R-32 — Upgrade a 1.x installation
+
+**Suite:** Regression · **Estimate:** 3 SP · **Stories:** [US-01.08](user-stories/US-01.08.md)
+
+**Preconditions:** Test server with a running 1.x bot and its database.
+
+**Steps**
+
+1. Update to 2.0 (`git pull` + `bash scripts/bot.sh start`).
+2. Watch the log and the channel for one hour.
+
+**Expected result:** Log `Upgrade from 1.x: continuing after war N`; only wars declared after the upgrade point are posted; no repeats.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______

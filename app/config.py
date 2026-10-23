@@ -29,12 +29,12 @@ class Credentials:
 
 @dataclass
 class Settings:
-    # dotlan
-    dotlan_base_url: str = "https://evemaps.dotlan.net"
-    dotlan_view: str = ""
+    # war source (CCP ESI)
     poll_interval_min: int = 15
     request_timeout_s: int = 20
     bootstrap_silent: bool = True
+    max_new_per_cycle: int = 50
+    alliance_member_count_max_corps: int = 20
     # discord
     username: str = "EVE War Watch"
     avatar_url: str = ""
@@ -47,7 +47,7 @@ class Settings:
     banner_enabled: bool = True
     # war report (ESI) + live message updates
     report_enabled: bool = True
-    esi_base_url: str = "https://esi.evetech.net/latest"
+    esi_base_url: str = "https://esi.evetech.net"
     esi_compatibility_date: str = "2025-08-26"
     report_recent_kills: int = 5
     report_kill_details_limit: int = 25
@@ -82,11 +82,15 @@ def load_settings(path: str | None = None) -> Settings:
     if Path(path).exists():
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     s = Settings()
-    s.dotlan_base_url = _get(raw, "dotlan.base_url", s.dotlan_base_url).rstrip("/")
-    s.dotlan_view = _get(raw, "dotlan.view", s.dotlan_view)
-    s.poll_interval_min = int(_get(raw, "dotlan.poll_interval_min", s.poll_interval_min))
-    s.request_timeout_s = int(_get(raw, "dotlan.request_timeout_s", s.request_timeout_s))
-    s.bootstrap_silent = bool(_get(raw, "dotlan.bootstrap_silent", s.bootstrap_silent))
+    # "source:" (2.x); "dotlan:" is still read so 1.x config files keep working
+    def src(key, default):
+        return _get(raw, f"source.{key}", _get(raw, f"dotlan.{key}", default))
+    s.poll_interval_min = int(src("poll_interval_min", s.poll_interval_min))
+    s.request_timeout_s = int(src("request_timeout_s", s.request_timeout_s))
+    s.bootstrap_silent = bool(src("bootstrap_silent", s.bootstrap_silent))
+    s.max_new_per_cycle = max(1, int(src("max_new_per_cycle", s.max_new_per_cycle)))
+    s.alliance_member_count_max_corps = int(src("alliance_member_count_max_corps",
+                                                s.alliance_member_count_max_corps))
     s.username = _get(raw, "discord.username", s.username)
     s.avatar_url = _get(raw, "discord.avatar_url", s.avatar_url)
     s.batch_embeds = max(1, min(10, int(_get(raw, "discord.batch_embeds", s.batch_embeds))))
@@ -97,9 +101,12 @@ def load_settings(path: str | None = None) -> Settings:
     s.logo_size = int(_get(raw, "images.logo_size", s.logo_size))
     s.banner_enabled = bool(_get(raw, "images.banner_enabled", s.banner_enabled))
     s.report_enabled = bool(_get(raw, "report.enabled", s.report_enabled))
-    s.esi_base_url = _get(raw, "report.esi_base_url", s.esi_base_url).rstrip("/")
-    s.esi_compatibility_date = str(_get(raw, "report.esi_compatibility_date",
-                                        s.esi_compatibility_date))
+    # "esi:" (2.x); "report.esi_*" is still read for 1.x config files
+    s.esi_base_url = str(_get(raw, "esi.base_url",
+                              _get(raw, "report.esi_base_url", s.esi_base_url))).rstrip("/")
+    s.esi_compatibility_date = str(_get(raw, "esi.compatibility_date",
+                                        _get(raw, "report.esi_compatibility_date",
+                                             s.esi_compatibility_date)))
     s.report_recent_kills = int(_get(raw, "report.recent_kills", s.report_recent_kills))
     s.report_kill_details_limit = int(_get(raw, "report.kill_details_limit",
                                            s.report_kill_details_limit))
@@ -137,14 +144,15 @@ def load_credentials(path: str | None = None, required: bool = True) -> Credenti
                 "Copy config/credentials.example.json to config/credentials.json and fill it in.")
         return Credentials(webhook_url="")
     try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
+        raw = json.loads(p.read_text(encoding="utf-8-sig"))   # tolerate a Windows BOM
     except json.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in {path}: {e}") from e
 
     creds = Credentials(
         webhook_url=str(_get(raw, "discord.webhook_url", "")).strip(),
         mention_role_id=str(_get(raw, "discord.mention_role_id", "")).strip(),
-        contact=str(_get(raw, "dotlan.contact", "")).strip(),
+        # "esi.contact" (2.x); "dotlan.contact" still read for 1.x files
+        contact=str(_get(raw, "esi.contact", _get(raw, "dotlan.contact", ""))).strip(),
     )
     if required:
         if not creds.webhook_url:

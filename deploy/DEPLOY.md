@@ -4,7 +4,7 @@ These files were unpacked from the bot image by the `install` command. Edit only
 
 | File | You edit it? | Purpose |
 |---|---|---|
-| `config/credentials.json` | **yes** | Discord webhook URL, optional role ID to ping, contact (secrets) |
+| `config/credentials.json` | **yes** | Discord webhook URL, optional role ID to ping, your e-mail for ESI (`esi.contact`) |
 | `config/config.yaml` | optional | interval, filters, war report, banner … |
 | `.env` | rarely | which image to run (`EVE_BOT_IMAGE=…`), e.g. pin a version |
 | `docker-compose.yml`, `scripts/`, `DEPLOY.md` | no | refreshed by `bash scripts/bot.sh update` |

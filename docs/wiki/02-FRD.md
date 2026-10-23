@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Product** | EVE War Bot 1.3.0 |
+| **Product** | EVE War Bot 2.0.0 |
 | **Owner** | Andrii Kunitsyn (Business Analyst) |
 | **Status** | Draft for review |
-| **Updated** | 2026-10-24 |
+| **Updated** | 2026-10-24 (2.0.0) |
 | **Related** | [Vision](01-Vision.md) · [User stories](03-User-Stories.md) · [Acceptance testing](04-Acceptance-Testing.md) |
 
 [Home](Home.md) › FRD
@@ -26,14 +26,12 @@ actor "Discord member" as M
 actor "Operator" as O
 rectangle "EVE War Bot\n(Docker container)" as BOT
 database "wars.db\n(SQLite on volume)" as DB
-cloud "DOTLAN\nevemaps.dotlan.net/wars" as DOT
-cloud "CCP ESI\nesi.evetech.net" as ESI
+cloud "CCP ESI\nesi.evetech.net\n(public routes)" as ESI
 cloud "EVE Image Server\nimages.evetech.net" as IMG
 cloud "Discord\nWebhook API" as DIS
 node "Registry\nNexus / GHCR" as REG
 
-BOT --> DOT : HTML (poll, every 15 min)
-BOT --> ESI : war, killmails, names, history
+BOT --> ESI : /wars/ (new wars), war details,\nnames, corps, alliances, killmails, history
 BOT --> IMG : logos (banner)
 BOT --> DIS : POST / PATCH messages
 BOT --> DB : state, reports, name cache
@@ -59,12 +57,13 @@ REG --> BOT : image pull
 @startuml
 title Poll cycle (simplified)
 start
-:Fetch DOTLAN wars list;
-:Parse rows -> wars;
-:Store new wars\n(pending / skipped / filtered);
-if (first run and bootstrap_silent?) then (yes)
-  :mark all "skipped";
+:GET /wars/ from ESI\n(cached until Expires, If-None-Match);
+if (first run?) then (yes)
+  :watermark = newest war ID\n(bootstrap_silent) ;
 endif
+:IDs > watermark, not stored\n(oldest first, max_new_per_cycle);
+:GET /wars/{id}/ + names, corps, alliances;
+:Store new wars\n(pending / filtered), move watermark;
 while (pending wars?) is (yes)
   :Build war report from ESI\n(optional, never blocks);
   :Build embed + banner;
@@ -87,15 +86,15 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 ### EP-01 War detection
 
-**Goal:** Find every new war declaration on DOTLAN reliably and exactly once.
+**Goal:** Find every new war declaration in CCP's official API (ESI) reliably and exactly once.
 
 | Feature | Priority | Description | Stories |
 |---|---|---|---|
-| **F-01.1** Scheduled polling | Must | Fetch the DOTLAN wars list every `poll_interval_min` minutes. | [US-01.01](user-stories/US-01.01.md) |
-| **F-01.2** Wars table parsing | Must | Extract war ID, parties (name, type, entity ID, members), declared time, status. | [US-01.02](user-stories/US-01.02.md), [US-01.03](user-stories/US-01.03.md) |
-| **F-01.3** New-war detection & de-duplication | Must | A war is notified at most once, also across restarts. | [US-01.04](user-stories/US-01.04.md) |
-| **F-01.4** Silent bootstrap | Must | The first run stores the current list without posting it. | [US-01.05](user-stories/US-01.05.md) |
-| **F-01.5** Robust parsing | Should | Broken rows or layout changes are logged and do not stop the service. | [US-01.06](user-stories/US-01.06.md) |
+| **F-01.1** Scheduled polling of ESI | Must | Read `GET /wars/` every `poll_interval_min` minutes, re-using ESI's cache until `Expires`. | [US-01.01](user-stories/US-01.01.md) |
+| **F-01.2** War details from ESI | Must | For each new war: declared time, status, both parties (name, ticker, type, members, corporations) from ESI. | [US-01.02](user-stories/US-01.02.md), [US-01.03](user-stories/US-01.03.md) |
+| **F-01.3** New-war detection & de-duplication | Must | Watermark on the war ID plus the database: a war is notified at most once, also across restarts. | [US-01.04](user-stories/US-01.04.md) |
+| **F-01.4** Silent bootstrap & upgrade | Must | The first run posts nothing; a 1.x database continues after its newest known war. | [US-01.05](user-stories/US-01.05.md), [US-01.08](user-stories/US-01.08.md) |
+| **F-01.5** ESI compliance & resilience | Must | Version-less routes, compatibility date, User-Agent with contact, Expires/ETag caching, rate and error limits; ESI errors never stop the service. | [US-01.06](user-stories/US-01.06.md), [US-01.07](user-stories/US-01.07.md) |
 
 ### EP-02 Discord delivery
 
@@ -115,13 +114,13 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 | Feature | Priority | Description | Stories |
 |---|---|---|---|
-| **F-03.1** Logos | Must | High-resolution alliance/corporation logos from the EVE Image Server, DOTLAN fallback. | [US-03.01](user-stories/US-03.01.md) |
+| **F-03.1** Logos | Must | High-resolution alliance/corporation logos from the EVE Image Server (entity ID from ESI). | [US-03.01](user-stories/US-03.01.md) |
 | **F-03.2** VS banner | Could | Generated 'Aggressor VS Defender' PNG attached to the message. | [US-03.02](user-stories/US-03.02.md) |
-| **F-03.3** Colours, times, links | Should | Status colour, local-time timestamps, links to DOTLAN and zKillboard. | [US-03.03](user-stories/US-03.03.md) |
+| **F-03.3** Colours, times, links | Should | Status colour, local-time timestamps, links to zKillboard and DOTLAN (links only). | [US-03.03](user-stories/US-03.03.md) |
 
 ### EP-04 War report & live updates
 
-**Goal:** Show the content of a DOTLAN war report and keep it current while the war runs.
+**Goal:** Show a full war report (like DOTLAN's war page) and keep it current while the war runs.
 
 | Feature | Priority | Description | Stories |
 |---|---|---|---|
@@ -168,9 +167,9 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 | ID | Rule |
 |---|---|
-| BR-01 | A war is identified by the DOTLAN war ID, which is the same as the CCP war ID. |
+| BR-01 | A war is identified by its CCP war ID from ESI (the same ID DOTLAN and zKillboard use). |
 | BR-02 | A war is posted **at most once**. Later changes are shown by editing the same message. |
-| BR-03 | On the first run (`bootstrap_silent: true`), all wars listed at that moment are stored as `skipped` and never posted. |
+| BR-03 | On the first run (`bootstrap_silent: true`), the newest war ID becomes the watermark; wars at or below it are never posted. A 1.x database continues after its highest stored war ID. |
 | BR-04 | Wars that don't match the filters are stored as `filtered` and are not posted later, even if the filters change. |
 | BR-05 | A war whose posting failed `max_attempts` times (default 5) is marked `failed` and not retried. |
 | BR-06 | The war report is optional: a missing report never stops or delays a post. |
@@ -183,16 +182,16 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 | ID | Category | Requirement | Verified by |
 |---|---|---|---|
-| NFR-01 | Performance | A new war is posted ≤ 30 min (P95) after its declaration ([K-1](01-Vision.md#5-kpis)) | [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) |
+| NFR-01 | Performance | A new war is posted ≤ 75 min (P95) after its declaration: ESI caches `/wars/` for up to 1 h ([K-1](01-Vision.md#5-kpis)) | [MT-R-03](07-Manual-Test-Scenarios.md#mt-r-03) |
 | NFR-02 | Reliability | No duplicate messages; pending posts survive restarts | `test_bootstrap_silent_then_only_new`, [MT-S-05](07-Manual-Test-Scenarios.md#mt-s-05) |
 | NFR-03 | Availability | Health check reports *unhealthy* after 2 × interval + 5 min without a successful cycle | [MT-R-19](07-Manual-Test-Scenarios.md#mt-r-19) |
 | NFR-04 | Resources | Container memory ≤ 256 MiB hard limit (typical 45–80 MiB), ≤ 0.5 CPU, ≤ 64 processes | [MT-R-18](07-Manual-Test-Scenarios.md#mt-r-18) |
 | NFR-05 | Security | Secrets only in `config/credentials.json`, mounted read-only; never in the image, git or logs | [MT-R-04](07-Manual-Test-Scenarios.md#mt-r-04), review |
 | NFR-06 | Security | Container: non-root (uid 10001), read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, no published ports | [MT-R-18](07-Manual-Test-Scenarios.md#mt-r-18) |
 | NFR-07 | Host safety | Scripts never change the firewall, ports, environment variables or sysctl, and never restart unrelated services ([K-9](01-Vision.md#5-kpis)) | [MT-R-21](07-Manual-Test-Scenarios.md#mt-r-21) |
-| NFR-08 | Fair use | DOTLAN polled ≥ 10 min apart, `User-Agent` with contact; Discord ≥ 2 s between posts, 429 honoured; ESI error limit honoured | Review, [MT-R-29](07-Manual-Test-Scenarios.md#mt-r-29) |
+| NFR-08 | Fair use | ESI rules followed: version-less routes + `X-Compatibility-Date`, `User-Agent` with app/version/contact/URL, no request before `Expires`, `If-None-Match`/304, 429 `Retry-After`, error limit (420) and token buckets honoured. Discord ≥ 2 s between posts, 429 honoured | Review, [MT-R-29](07-Manual-Test-Scenarios.md#mt-r-29) |
 | NFR-09 | Portability | Runs on Docker Engine with Compose v2 (including older 2.x versions), on Ubuntu 20.04/22.04/24.04 and Docker Desktop (Windows) | Field: Windows Docker Desktop ✔, Ubuntu 22.04 server ✔ |
-| NFR-10 | Maintainability | Automated tests run on every push (GitHub Actions); parser isolated in `app/scraper.py` | [Integration tests](05-Integration-Tests.md) |
+| NFR-10 | Maintainability | Automated tests run on every push (GitHub Actions); ESI access isolated in `app/esi.py` and `app/source.py` | [Integration tests](05-Integration-Tests.md) |
 | NFR-11 | Operability | Every routine task is one `scripts/bot.sh` command; configuration errors name the field and the fix | [MT-R-20](07-Manual-Test-Scenarios.md#mt-r-20) |
 | NFR-12 | Logging | Logs on stdout, rotated at 3 × 5 MB; no secrets in logs | Review |
 
@@ -200,8 +199,8 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 | ID | Constraint |
 |---|---|
-| C-01 | DOTLAN has no public API for the wars list. The HTML page is parsed. |
-| C-02 | DOTLAN `/war/{id}` pages are disallowed for bots by `robots.txt`. War report data comes from CCP ESI instead. |
+| C-01 | *Since 2.0* new wars come only from ESI `GET /wars/` (newest 2000 IDs, cached up to 1 h). 1.x parsed the DOTLAN HTML list; that was dropped to depend only on CCP's official API. |
+| C-02 | DOTLAN and zKillboard are only **linked** in messages; the bot never reads them. |
 | C-03 | ESI does not return an ISK value per killmail. Only per-side totals (`isk_destroyed`) are used. |
 | C-04 | The target server is a small **shared** VM (1 GB RAM, 2 vCPU) that already runs other web apps and has been in use for years. Setup must not assume a fresh server. |
 | C-05 | *Lesson learned (1.3.0):* an earlier setup script enabled `ufw` (SSH only), changed `vm.swappiness`, ran `apt-get upgrade` and could hang on `cloud-init status --wait`. All of these have been removed, and `scripts/revert-setup.sh` undoes them ([US-06.06](user-stories/US-06.06.md)). |
@@ -212,8 +211,9 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 | Interface | Direction | Protocol / format | Used for | Feature |
 |---|---|---|---|---|
-| DOTLAN `GET /wars[/view]` | out | HTTPS, HTML | wars list | F-01.1, F-01.2 |
-| ESI `GET /wars/`, `/wars/{id}/`, `/wars/{id}/killmails/`, `/killmails/{id}/{hash}/`, `/alliances/{id}/`, `/corporations/{id}/`, `POST /universe/names/` | out | HTTPS, JSON | war report, history statistics | F-04.x, F-07.1 |
+| ESI `GET /wars/` | out | HTTPS, JSON, `Expires`/`ETag` | newest war IDs (detection) | F-01.1, F-01.3 |
+| ESI `GET /wars/{id}/`, `/corporations/{id}/`, `/alliances/{id}/`, `/alliances/{id}/corporations/`, `POST /universe/names/` | out | HTTPS, JSON | war details, parties | F-01.2 |
+| ESI `GET /wars/{id}/killmails/`, `/killmails/{id}/{hash}/`, `GET /wars/?max_war_id=` | out | HTTPS, JSON | war report, history statistics | F-04.x, F-07.1 |
 | EVE Image Server `/alliances|corporations/{id}/logo` | out | HTTPS, PNG | logos, banner | F-03.1, F-03.2 |
 | Discord `POST {webhook}?wait=true`, `PATCH {webhook}/messages/{id}` | out | HTTPS, JSON or multipart | messages, live updates | F-02.x, F-04.3 |
 | `config/credentials.json` | in | JSON | secrets | F-05.1 |
@@ -254,7 +254,7 @@ entity names {
   category : TEXT
   updated_at : TEXT
 }
-note right of meta : bootstrapped_at
+note right of meta : bootstrapped_at,\nwatermark_war_id
 note right of names : ESI id -> name cache
 @enduml
 ```
@@ -263,9 +263,9 @@ note right of names : ESI id -> name cache
 
 | ID | Item | Owner | Status |
 |---|---|---|---|
-| A-01 | DOTLAN war IDs are the same as CCP ESI war IDs | Dev | Assumed; confirm with one real war ([MT-R-13](07-Manual-Test-Scenarios.md#mt-r-13)) |
-| A-02 | The DOTLAN active-wars list contains every new war within one poll interval | PO | Measured by K-2 coverage |
-| Q-01 | Is polling DOTLAN every 15 minutes acceptable to the site owner? | PO | Open |
+| A-01 | ESI `GET /wars/` lists every new war; war IDs only grow | Dev | Documented ESI behaviour; K-2 coverage measures it |
+| A-02 | The default compatibility date `2025-08-26` is accepted by ESI | Dev | Check the start log on the server ([MT-R-31](07-Manual-Test-Scenarios.md#mt-r-31)) |
+| Q-01 | Should the bot raise its compatibility date regularly (after reading the ESI changelog)? | PO / Dev | Open |
 | Q-02 | Should war end / status changes also get a separate message (in addition to the edit)? | PO | Open |
 | Q-03 | Should statistics also cover other days, or wars *ended* per month? | PO | Open |
 
@@ -278,6 +278,8 @@ note right of names : ESI id -> name cache
 | Open for allies | The defender may accept allies |
 | Webhook | Secret Discord URL; whatever is posted to it appears in the channel |
 | Embed | Discord's rich message block (title, fields, images, colour) |
-| ESI | EVE Swagger Interface, CCP's official API |
-| Bootstrap | The bot's first run, which stores existing wars without posting them |
+| ESI | EVE Swagger Interface, CCP's official API ([docs](https://developers.eveonline.com/docs/services/esi/overview/)) |
+| Compatibility date | `X-Compatibility-Date` header: ESI answers with the API behaviour of that date |
+| Watermark | Highest war ID the bot has processed; only higher IDs are new |
+| Bootstrap | The bot's first run: it remembers the newest war ID and posts nothing |
 | Live update | Editing an already posted message with a fresh war report |

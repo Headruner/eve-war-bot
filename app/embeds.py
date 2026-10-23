@@ -13,7 +13,7 @@ EMBED_LIMIT = 6000
 
 
 def logo_url(p: Party, s: Settings, size: int | None = None) -> str | None:
-    """High-resolution logo from the official EVE Image Server; DOTLAN 32 px as fallback."""
+    """High-resolution logo from the official EVE Image Server (legacy 1.x fallback URL)."""
     if p.entity_id:
         kind = "alliances" if p.type == "alliance" else "corporations"
         return f"{s.image_server}/{kind}/{p.entity_id}/logo?size={size or s.logo_size}"
@@ -41,13 +41,27 @@ def _when(iso: str | None) -> str:
     return f"<t:{t}:f> (<t:{t}:R>)" if t else "—"
 
 
+ZKILL = "https://zkillboard.com"
+
+
+def zkill_url(p: Party) -> str | None:
+    if not p.entity_id:
+        return None
+    return f"{ZKILL}/{'alliance' if p.type == 'alliance' else 'corporation'}/{p.entity_id}/"
+
+
 def _party_field(label: str, p: Party, ticker: str | None = None) -> dict:
-    members = f"{p.members:,}" if p.members is not None else "?"
+    ticker = ticker or getattr(p, "ticker", None)
     tick = f" [{ticker}]" if ticker else ""
+    size = []
+    if p.members is not None:
+        size.append(f"{p.members:,} members")
+    if getattr(p, "corporations", None):
+        size.append(f"{p.corporations:,} corporations")
     return {
         "name": label,
         "value": f"**[{p.name}]({p.dotlan_url})**{tick}\n{TYPE_ICON.get(p.type, '')} "
-                 f"{p.type.title()} · {members} members"[:1024],
+                 f"{p.type.title()}" + (" · " + " · ".join(size) if size else ""),
         "inline": True,
     }
 
@@ -117,11 +131,11 @@ def build_embed(w: War, s: Settings, banner_filename: str | None = None,
     if over:
         status += " · **ended**"
 
-    links = [f"[DOTLAN war report]({w.report_url})"]
-    if report:
-        links.append(f"[zKillboard]({report['zkill_war_url']})")
-    links += [f"[Aggressor wars]({w.aggressor.dotlan_url})",
-              f"[Defender wars]({w.defender.dotlan_url})"]
+    links = [f"[zKillboard war](https://zkillboard.com/war/{w.war_id}/)",
+             f"[DOTLAN war report]({w.report_url})"]
+    for lbl, p in (("Aggressor", w.aggressor), ("Defender", w.defender)):
+        if (u := zkill_url(p)):
+            links.append(f"[{lbl} kills]({u})")
 
     fields = [_party_field("Aggressor", w.aggressor, a_tick),
               _party_field("Defender", w.defender, d_tick),
@@ -133,7 +147,7 @@ def build_embed(w: War, s: Settings, banner_filename: str | None = None,
                        "value": f"<t:{ts}:F>\n<t:{ts}:R>" if ts else "n/a", "inline": True})
     fields.append({"name": "🔗 Links", "value": " · ".join(links)[:1024], "inline": False})
 
-    footer = f"Source: DOTLAN EveMaps + ESI · War #{w.war_id}"
+    footer = f"Source: EVE Online ESI · War #{w.war_id}"
     if report and report.get("fetched_at"):
         footer += " · report updated"
     embed: dict = {

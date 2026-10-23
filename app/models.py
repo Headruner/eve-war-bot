@@ -9,10 +9,12 @@ from datetime import datetime
 class Party:
     name: str
     type: str                 # "alliance" | "corporation"
-    entity_id: int | None     # EVE entity ID (from the logo URL)
-    members: int | None
-    dotlan_url: str
-    logo_url_small: str | None = None   # 32 px logo as shown on DOTLAN
+    entity_id: int | None     # EVE alliance / corporation ID
+    members: int | None       # pilots (None = unknown, e.g. very large alliances)
+    dotlan_url: str           # link for readers (not read by the bot)
+    logo_url_small: str | None = None   # legacy (1.x, DOTLAN 32 px logo)
+    ticker: str | None = None
+    corporations: int | None = None     # alliances only: number of member corporations
 
 
 @dataclass
@@ -22,7 +24,7 @@ class War:
     aggressor: Party
     defender: Party
     status: str                         # "none" | "open_for_allies" | "mutual"
-    report_url: str
+    report_url: str                     # DOTLAN war report (link for readers)
 
     def to_dict(self) -> dict:
         d = asdict(self)

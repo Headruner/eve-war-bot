@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Document** | Vision & goals |
-| **Product** | EVE War Bot 1.3.0 |
+| **Product** | EVE War Bot 2.0.0 |
 | **Owner** | Andrii Kunitsyn (Business Analyst / Product Owner) |
 | **Status** | Draft for review |
 | **Updated** | 2026-10-24 |
@@ -38,7 +38,7 @@ In EVE Online, any corporation or alliance can declare war on another. After a d
 
 | ID | Goal | Measured by |
 |---|---|---|
-| G-1 | **Timely awareness**: new wars reach Discord shortly after DOTLAN lists them | K-1, K-2 |
+| G-1 | **Timely awareness**: new wars reach Discord shortly after they are declared (as soon as CCP's API lists them) | K-1, K-2 |
 | G-2 | **Trustworthy channel**: no duplicates, no spam, only relevant wars | K-3, K-4 |
 | G-3 | **Understand a war at a glance**: parties, logos, status, score, kills in one message | K-5 |
 | G-4 | **Zero-maintenance operation**: runs unattended in a small container and never affects other apps on the server | K-6, K-7, K-8, K-9 |
@@ -50,7 +50,7 @@ Targets apply per calendar month unless stated otherwise. The *measure* column s
 
 | ID | KPI | Target | Measure |
 |---|---|---|---|
-| K-1 | **Detection latency**: time from war declaration to Discord post, P95 | ≤ 30 min (poll interval 15 min) | `notified_at − declared_at` for `sent` wars |
+| K-1 | **Detection latency**: time from war declaration to Discord post, P95 | ≤ 75 min (ESI caches the war list up to 1 h + poll interval 15 min) | `notified_at − declared_at` for `sent` wars |
 | K-2 | **Coverage**: share of wars declared (ESI) that the bot recorded | ≥ 99 % | [`stats`](06-Statistics.md) "declared" vs "seen by bot" |
 | K-3 | **Duplicate messages** | 0 | Database (`war_id` is unique) and a manual check of the channel |
 | K-4 | **Delivery success**: `sent / (sent + failed)` | ≥ 99.5 % | Database |
@@ -66,7 +66,7 @@ KPI definitions for an automated report ([US-07.02](user-stories/US-07.02.md), p
 ```yaml
 kpis:
   K-1_detection_latency_p95_min:
-    target: "<= 30"
+    target: "<= 75"
     sql: |
       SELECT (julianday(notified_at) - julianday(declared_at)) * 1440 AS minutes
       FROM wars WHERE state = 'sent' AND notified_at >= date('now','start of month')
@@ -96,7 +96,7 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 
 **In scope (release 1.x)**
 
-- reading new wars from the DOTLAN wars list ([EP-01](02-FRD.md#ep-01-war-detection));
+- reading new wars from CCP's official API, ESI ([EP-01](02-FRD.md#ep-01-war-detection)), following its documented rules;
 - Discord notifications through a webhook, with filters and an optional role ping ([EP-02](02-FRD.md#ep-02-discord-delivery));
 - rich messages: logos, banner, colours, links ([EP-03](02-FRD.md#ep-03-rich-message-content));
 - a war report with live updates, built from CCP ESI ([EP-04](02-FRD.md#ep-04-war-report--live-updates));
@@ -110,11 +110,11 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 - in-game notifications, EVE SSO login, private (authenticated) ESI data;
 - more than one Discord channel per bot instance (run several instances instead);
 - a web UI or dashboard;
-- reading DOTLAN `/war/{id}` pages, which DOTLAN's `robots.txt` disallows for bots. The same data comes from ESI instead.
+- reading any third-party website (DOTLAN, zKillboard). Since 2.0 they are only linked in messages.
 
 ## 7. Constraints and principles
 
-- **Be a good citizen:** poll DOTLAN no more than every 10–15 minutes, identify the bot with a contact in its `User-Agent`, respect ESI and Discord rate limits.
+- **Be a good citizen:** follow the [ESI rules](https://developers.eveonline.com/docs/services/esi/best-practices/): User-Agent with a contact, no request before `Expires`, `ETag`/304, rate and error limits, compatibility date. Respect Discord's rate limits.
 - **Don't touch the host:** the bot and its scripts add only what is missing. They never change firewall rules, open ports, environment variables or sysctl, and never restart other services. This is a lesson from release 1.3.0, recorded in the [FRD](02-FRD.md#8-constraints).
 - **Secrets only in `config/credentials.json`:** never in git, the image or logs.
 - **Small footprint:** a 1 GB / 2 vCPU droplet that runs other apps as well.
@@ -126,15 +126,16 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 | 1.0 | DOTLAN → Discord, rich embeds, SQLite dedup, Docker | Done |
 | 1.1 | War report from ESI, live message updates | Done |
 | 1.2 | Container limits and hardening, operator scripts, beginner manual, CI | Done |
-| 1.3 | Nexus delivery, one-command install, safe setup, revert script, `stats` | Done, field verification ongoing |
-| 1.4 (proposal) | KPI report ([US-07.02](user-stories/US-07.02.md)), closing the [automated test gaps](05-Integration-Tests.md#4-coverage-gaps) | Planned |
+| 1.3 | Nexus delivery, one-command install, safe setup, revert script, `stats` | Done |
+| 2.0 | War source switched from DOTLAN (HTML) to CCP ESI (`/wars/`), ESI caching and rate-limit rules, upgrade path from 1.x | Done, field verification pending |
+| 2.1 (proposal) | KPI report ([US-07.02](user-stories/US-07.02.md)), closing the [automated test gaps](05-Integration-Tests.md#4-coverage-gaps) | Planned |
 
 ## 9. Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| DOTLAN changes its HTML layout | No new wars detected | `ScrapeError` in the log, health check goes unhealthy, parser isolated in one module ([US-01.06](user-stories/US-01.06.md)) |
-| DOTLAN restricts automated access | Feature stops | Contact in `User-Agent`, low polling rate; fall-back option: ESI `/wars/` as the source |
-| CCP changes ESI (versioning) | War report or statistics missing | Base URL and compatibility date are configurable; the core function doesn't depend on ESI ([US-04.05](user-stories/US-04.05.md)) |
+| CCP changes ESI behaviour | Detection or report breaks | Fixed `X-Compatibility-Date` keeps behaviour stable; raise it only after reading the changelog ([US-01.07](user-stories/US-01.07.md)) |
+| ESI unavailable (downtime ~11:00 UTC, incidents) | Delay | Errors logged, retried next cycle, no wars lost ([US-01.06](user-stories/US-01.06.md)) |
+| App banned for breaking ESI rules | Feature stops | Caching, rate limits and User-Agent rules implemented and tested ([US-01.07](user-stories/US-01.07.md)) |
 | Webhook URL leaks | Spam in the channel | Webhook only in `credentials.json`; regenerate the webhook in Discord |
 | Changes to a shared server | Other apps disrupted | Principle "don't touch the host", [revert script](user-stories/US-06.06.md) |

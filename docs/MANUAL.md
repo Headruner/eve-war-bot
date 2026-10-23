@@ -127,7 +127,7 @@ An editor opens. Fill in the values **between the quotes**:
     "webhook_url": "https://discord.com/api/webhooks/1234567890/AbCdEf...",
     "mention_role_id": ""
   },
-  "dotlan": {
+  "esi": {
     "contact": "your-mail@example.com"
   }
 }
@@ -137,7 +137,7 @@ An editor opens. Fill in the values **between the quotes**:
 |---|---|
 | `webhook_url` | the URL from step 1 (**required**) |
 | `mention_role_id` | the role number from step 1, or leave `""` for no ping |
-| `contact` | your e-mail or Discord name, so the DOTLAN site owner can reach you if needed |
+| `contact` | your **e-mail address**. CCP asks every app that uses its EVE Online API (ESI) to send a contact, so they can reach you instead of blocking the bot |
 
 **Saving in nano:** press **Ctrl + O**, then **Enter** (save). Then press **Ctrl + X** (exit).
 
@@ -163,7 +163,7 @@ The first run builds the bot's container, which takes 1–3 minutes.
 bash scripts/bot.sh test
 ```
 
-✅ You see `Parsed NN wars` and lines that start with `[DRY RUN] POST`. Those are the messages the bot *would* send. Nothing reaches Discord, and nothing is saved.
+✅ You see `ESI: 2000 war IDs listed, ...`. Lines that start with `[DRY RUN] POST` appear only if there are new wars. Those are the messages the bot *would* send. Nothing reaches Discord, and nothing is saved.
 
 ### 6.3 Start the bot for real
 
@@ -173,7 +173,7 @@ bash scripts/bot.sh start
 
 ✅ You see a table with `eve-war-bot` and `Up`.
 
-> **What happens on the first start:** the bot saves all wars **currently** listed as "already known" and posts **nothing**, so your channel isn't flooded with about 60 old wars. From then on, each **new** war appears in Discord within about 15 minutes of showing up on DOTLAN.
+> **What happens on the first start:** the bot asks EVE Online's official API (ESI) for the newest war, remembers it, and posts **nothing**, so your channel isn't flooded with old wars. From then on, each **new** war appears in Discord, usually **15–75 minutes** after it was declared. ESI itself only refreshes its war list about once an hour.
 
 ### 6.4 Watch it work
 
@@ -181,7 +181,7 @@ bash scripts/bot.sh start
 bash scripts/bot.sh logs
 ```
 
-✅ About every 15 minutes you see a line like `Parsed 59 wars, 0 new.` When a new war appears: `Notified war(s) [763600] -> message ...`
+✅ About every 15 minutes you see a line like `ESI: 2000 war IDs listed, 0 new.` When a new war appears: `Notified war(s) [763600] -> message ...`
 Press **Ctrl + C** to leave the log. The bot keeps running.
 
 **You're done.** You can close the terminal (type `exit`). The bot runs on its own, restarts by itself if it crashes, and starts again automatically when the server reboots.
@@ -266,10 +266,11 @@ You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com
 | `Invalid JSON in ...credentials.json` | a quote or comma is missing. Compare with the example in step 5. |
 | `config/credentials.json is a FOLDER` | the bot was started before step 5. Run `rmdir config/credentials.json`, then `bash scripts/bot.sh init`, then step 5 again. |
 | `Discord webhook rejected (HTTP 401/404)` | the webhook was deleted or copied wrongly. Create a new one (step 1) and put it into `credentials.json`. |
-| `status` shows `unhealthy` | the bot hasn't finished a check for over 35 minutes. Look at `bash scripts/bot.sh logs` for the red ERROR lines. Usually DOTLAN or the internet was down, and it fixes itself. |
-| `Scrape error: No war rows found` | DOTLAN changed its web page. The code needs an update; send the log to the developer. |
+| `status` shows `unhealthy` | the bot hasn't finished a check for over 35 minutes. Look at `bash scripts/bot.sh logs` for the red ERROR lines. Usually ESI or the internet was down, and it fixes itself. |
+| `ESI error: ... HTTP 4xx/5xx` | EVE Online's API had a problem (often during the daily server downtime around 11:00 UTC). The bot tries again in the next cycle. If it stays for hours, check [the EVE server status](https://www.eveonline.com/) or send the log to the developer. |
+| `No contact in credentials.json` warning | add your e-mail as `esi.contact` (step 5), then `bash scripts/bot.sh restart` |
 | `War report for ... unavailable` | CCP's ESI service didn't answer. The war is still posted, and the report is filled in on the next hourly update. |
-| No new messages for a long time | that can be normal: some days have few new wars. Check `logs` — the line `Parsed NN wars, 0 new.` means it is working. |
+| No new messages for a long time | that can be normal: some days have few new wars. Check `logs` — the line `ESI: NNNN war IDs listed, 0 new.` means it is working. |
 | `unauthorized` or `no basic auth credentials` (Option C) | run `docker login <registry-address>` again with the Nexus user. |
 | `server gave HTTP response to HTTPS client` (Option C) | Nexus uses plain HTTP. Ask the admin for HTTPS, or for the `insecure-registries` setting. |
 | The setup script seems frozen (no CPU or disk activity) | In a second SSH session run `ps -ef --forest \| grep -B2 -A4 [s]etup-droplet`. A question like `*** <file> (Y/I/N/O/D/Z)` in the first window → type **N** and Enter (keeps your config). `cloud-init status --wait` (old script version) → `sudo pkill -f "cloud-init status --wait"`. Never press Ctrl+C while `dpkg` runs. |
@@ -291,5 +292,5 @@ You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com
 | **Volume** | the bot's permanent storage on the server; it keeps the list of already posted wars, even after restarts |
 | **Swap** | disk space used as emergency memory when RAM is full |
 | **Token** | a password for one specific purpose that you can revoke at any time |
-| **DOTLAN** | evemaps.dotlan.net, the website where the bot reads new wars |
-| **ESI** | CCP's official EVE Online API; the bot gets the war report (kills, allies, score) from it |
+| **ESI** | EVE Swagger Interface, EVE Online's official API. The bot reads new wars and war reports from it |
+| **DOTLAN** | evemaps.dotlan.net, a community website about EVE. Messages link to it, but the bot doesn't read it |
