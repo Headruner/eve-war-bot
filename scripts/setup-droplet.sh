@@ -21,11 +21,35 @@ fi
 
 say() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 
+# A fresh droplet installs updates on its own right after the first boot
+# (cloud-init / unattended-upgrades) and holds the apt lock meanwhile.
+# Wait for that instead of failing with "Could not get lock /var/lib/apt/lists/lock".
+wait_for_apt() {
+  if command -v cloud-init >/dev/null 2>&1; then
+    cloud-init status --wait >/dev/null 2>&1 || true
+  fi
+  local waited=0
+  while fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \
+              /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    if (( waited == 0 )); then
+      echo "Ubuntu is still installing its own updates in the background - waiting..."
+    fi
+    if (( waited >= 1200 )); then
+      echo "apt has been busy for 20 minutes. Check with:  ps aux | grep -E 'apt|dpkg'" >&2
+      exit 1
+    fi
+    sleep 10; waited=$((waited + 10))
+  done
+}
+# also let apt itself wait up to 10 min for the dpkg lock
+APT=(apt-get -y -o DPkg::Lock::Timeout=600)
+
 say "1/5 Updating system packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y ca-certificates curl git ufw unattended-upgrades nano
+wait_for_apt
+"${APT[@]}" update
+"${APT[@]}" upgrade
+"${APT[@]}" install ca-certificates curl git ufw unattended-upgrades nano psmisc
 
 say "2/5 Swap file (1 GB)"
 if swapon --show | grep -q '/swapfile'; then
@@ -52,8 +76,9 @@ else
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
 https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
-  apt-get update -y
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  wait_for_apt
+  "${APT[@]}" update
+  "${APT[@]}" install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 systemctl enable --now docker
 

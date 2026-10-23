@@ -15,11 +15,17 @@ eve-war-bot/
 ├── requirements.txt              # Python dependencies (pinned)
 ├── .dockerignore / .gitignore    # credentials.json is excluded from image & git
 ├── .env.example                  # optional: use the prebuilt image from GHCR
+├── nexus.env.example             # Nexus registry settings for the publish scripts (copy to nexus.env)
+├── deploy/
+│   ├── docker-compose.yml        # server compose file (image from a registry, no build) - shipped in the image
+│   └── DEPLOY.md                 # short server guide - shipped in the image
 ├── .github/workflows/docker.yml  # CI: tests + build image on GitHub -> ghcr.io
 ├── docs/MANUAL.md                # beginner step-by-step deployment guide
 ├── scripts/
 │   ├── setup-droplet.sh          # one-time server prep: updates, swap, Docker, firewall
-│   └── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup
+│   ├── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup
+│   ├── publish-nexus.sh          # build + push the image to Nexus (Linux/macOS)
+│   └── publish-nexus.ps1         # same for Windows (Docker Desktop)
 ├── config/
 │   ├── credentials.example.json  # TEMPLATE with empty fields -> copy to credentials.json
 │   └── config.yaml               # non-secret settings (interval, filters, images ...)
@@ -33,6 +39,7 @@ eve-war-bot/
 │   ├── embeds.py                 # rich Discord embed builder
 │   ├── banner.py                 # "Aggressor VS Defender" PNG generator (Pillow)
 │   ├── discord_notifier.py       # Discord webhook client: post + edit, rate limits, retries
+│   ├── installer.py              # `install` command: unpacks the deployment bundle from the image
 │   ├── healthcheck.py            # Docker HEALTHCHECK
 │   └── models.py                 # War / Party data classes
 └── tests/                        # pytest, saved HTML page, fake ESI, mock Discord server
@@ -195,7 +202,7 @@ M -> M : write heartbeat, sleep
 | Format | HTML. DOTLAN has no public JSON API for this list, so the page is parsed (BeautifulSoup). |
 | Pagination | none, all active wars are on one page |
 | Frequency | `poll_interval_min` (default 15). DOTLAN is a community-run site, so keep this low. |
-| Headers | `User-Agent: eve-war-bot/1.2.0 (+<contact>)` |
+| Headers | `User-Agent: eve-war-bot/1.3.0 (+<contact>)` |
 | Not used | `/war/{id}` pages — DOTLAN's `robots.txt` disallows them for bots, so the war report is built from ESI instead (4.6) |
 
 **Row structure and parsing.** Each table row has these cells: *Declared* · aggressor logo · aggressor name · defender logo · defender name · status · *War Report*. The header row has stray empty cells, so the parser does not count columns. It finds each piece by its URL pattern:
@@ -499,7 +506,7 @@ Wars that do not match the filters are stored as `filtered`. They will **not** b
 |---|---|
 | Base image | `python:3.12-slim` + `fonts-dejavu-core` (banner text) |
 | User | non-root `bot` (uid 10001) |
-| Entry point | `python -m app.main` (extra arguments: `--once`, `--check-config`, `--html-file`) |
+| Entry point | `python -m app.main` (extra arguments: `--once`, `--check-config`, `--html-file`; `install [--force]` unpacks the deployment bundle) |
 | Restart | `unless-stopped` |
 | Memory | `mem_limit: 256m`, `memswap_limit: 384m`, `mem_reservation: 96m` (measured use ≈ 45–80 MB) |
 | CPU / processes | `cpus: "0.5"`, `pids_limit: 64` |
@@ -528,6 +535,90 @@ Rough memory budget: OS ≈ 150–250 MB · Docker ≈ 80–120 MB · bot ≈ 45
 
 **Dry runs** (`DRY_RUN=true`, `bash scripts/bot.sh test`) use a temporary database in `/tmp`, so a test never marks real wars as "sent".
 
+
+### 7.2 Delivery through Nexus (build once, install with one command)
+
+The image carries everything a server needs, not only the program. One `install` command on the server unpacks the compose file, the config templates and the helper scripts. After that you only edit the secrets.
+
+```plantuml
+@startuml
+title Delivery through a Nexus Docker registry
+actor Developer as Dev
+node "Developer PC\n(Docker Desktop)" as PC
+database "Nexus\ndocker (hosted)" as NX
+node "Linux VM" as VM
+actor Operator as Op
+
+Dev -> PC : scripts/publish-nexus.ps1 (or .sh)
+PC -> PC : tests, docker buildx build\n--platform linux/amd64
+PC -> NX : push <registry>/eve-war-bot:<version> + :latest
+Op -> VM : docker login <registry>
+VM -> NX : docker run ... eve-war-bot:latest install
+NX --> VM : image
+VM -> VM : writes docker-compose.yml, .env,\nconfig/*, scripts/*, DEPLOY.md
+Op -> VM : nano config/credentials.json
+Op -> VM : bash scripts/bot.sh start
+VM -> VM : container runs (pulls :latest)
+@enduml
+```
+
+**What is inside the image (`/app/deploy`)**
+
+| File unpacked on the server | Owner | On `install --force` / `bot.sh update` |
+|---|---|---|
+| `docker-compose.yml` (from `deploy/`, no `build:`, image from `.env`) | app | refreshed |
+| `scripts/bot.sh`, `scripts/setup-droplet.sh`, `DEPLOY.md`, `config/credentials.example.json` | app | refreshed |
+| `config/config.yaml` | you | created once, **never overwritten** |
+| `config/credentials.json` (empty template) | you | created once, **never overwritten** |
+| `.env` (`EVE_BOT_IMAGE=<registry>/eve-war-bot:latest`, from the build arg `EVE_BOT_IMAGE_REF`) | you | created once, **never overwritten** |
+
+#### A. One-time Nexus setup (Nexus admin)
+
+1. **Repository:** *Administration → Repositories → Create repository → `docker (hosted)`*, e.g. `docker-hosted`.
+   - **HTTP/HTTPS connector:** give it a port (e.g. `8083`). The registry address is then `nexus.example.com:8083`. Alternatively use path-based routing (`nexus.example.com/repository/docker-hosted`) if your Nexus version supports it.
+   - *Deployment policy:* `Allow redeploy` (needed to overwrite `:latest`).
+2. **Realm:** *Security → Realms* → move **Docker Bearer Token Realm** to *Active*.
+3. **Users and roles:**
+   - `eve-publisher`: privileges `nx-repository-view-docker-docker-hosted-add`, `-edit`, `-read`, `-browse` (push).
+   - `eve-server`: only `-read`, `-browse` (pull) → use this one on the VM.
+4. **TLS:** put the Docker connector behind HTTPS (reverse proxy or a Nexus certificate). With plain HTTP, every Docker client must list the registry in `insecure-registries` in `/etc/docker/daemon.json` (Docker Desktop: *Settings → Docker Engine*).
+
+#### B. Publish (developer PC)
+
+```powershell
+Copy-Item nexus.env.example nexus.env      # NEXUS_REGISTRY=nexus.example.com:8083, NEXUS_USER=eve-publisher
+powershell -ExecutionPolicy Bypass -File scripts\publish-nexus.ps1
+```
+
+```bash
+cp nexus.env.example nexus.env && nano nexus.env
+bash scripts/publish-nexus.sh
+```
+
+The script runs the tests (if pytest is installed), logs in, runs `docker buildx build --platform linux/amd64` (so it also works from ARM machines), and pushes `:<version>` (from `app/__init__.py`) and `:latest`. At the end it prints the server commands. `nexus.env` is git-ignored. Leave `NEXUS_PASSWORD` empty to be asked for it.
+
+#### C. Install on the Linux VM (one time)
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/Headruner/eve-war-bot/main/scripts/setup-droplet.sh)"   # optional: Docker, swap, firewall (public repos only)
+docker login nexus.example.com:8083                              # user eve-server
+mkdir -p ~/eve-war-bot && cd ~/eve-war-bot
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" nexus.example.com:8083/eve-war-bot:latest install
+nano config/credentials.json
+bash scripts/bot.sh start
+```
+
+For a private GitHub repo, the first line won't work. Install Docker with your usual method, or copy `scripts/setup-droplet.sh` to the server once. After `install`, the script is also in `scripts/` on the server.
+
+#### D. Updates
+
+| Where | Command | Result |
+|---|---|---|
+| PC | `scripts/publish-nexus.ps1` | new `:<version>` and `:latest` in Nexus |
+| VM | `bash scripts/bot.sh update` | pulls `:latest`, runs `install --force` (refreshes compose/scripts, keeps config, secrets, `.env`), restarts |
+
+To stay on a fixed version, set `EVE_BOT_IMAGE=<registry>/eve-war-bot:1.3.0` in `.env` on the VM. `bot.sh` detects a registry setup by the missing `Dockerfile` or a registry image in `.env`, and then pulls instead of building.
+
 ## 8. Tests
 
 ```bash
@@ -537,7 +628,7 @@ pytest -q
 
 GitHub Actions runs the same tests on every push and pull request.
 
-The tests cover parsing (full names, IDs, statuses, both date formats), the silent first run, no re-posting after a restart (a new store object on the same database file), filters, the multipart banner upload, the war report (score, allies, kills, efficiency) and live updates (an edit only when the report changes, a final edit when the war ends, then no more edits), and that dry runs never touch the real database. They run against a fake ESI client and a mock Discord webhook server.
+The tests cover parsing (full names, IDs, statuses, both date formats), the silent first run, no re-posting after a restart (a new store object on the same database file), filters, the multipart banner upload, the war report (score, allies, kills, efficiency) and live updates (an edit only when the report changes, a final edit when the war ends, then no more edits), and that dry runs never touch the real database, and that `install` unpacks the bundle without overwriting your config or secrets. They run against a fake ESI client and a mock Discord webhook server.
 
 `tests/fixtures/wars.html` is rebuilt from the live page structure (23 Oct 2026). For stronger regression tests, replace it with a real copy saved from the browser.
 

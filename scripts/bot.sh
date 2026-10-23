@@ -10,7 +10,7 @@
 #   bash scripts/bot.sh restart   restart after changing config files
 #   bash scripts/bot.sh logs      follow the log (Ctrl+C to leave)
 #   bash scripts/bot.sh status    container state, health, memory/CPU, stored wars
-#   bash scripts/bot.sh update    git pull + rebuild + restart
+#   bash scripts/bot.sh update    get the newest version (git pull / image pull) + restart
 #   bash scripts/bot.sh backup    copy the database to ./backups/
 # -----------------------------------------------------------------------------
 set -euo pipefail
@@ -18,7 +18,12 @@ cd "$(dirname "$0")/.."
 
 CREDS=config/credentials.json
 DC="docker compose"
-[[ -f .env ]] && grep -q '^EVE_BOT_IMAGE=ghcr.io' .env && PULL=1 || PULL=0
+# PULL mode: ready-made image from a registry (Nexus, GHCR) instead of building here.
+# Active when there is no Dockerfile (installed bundle) or .env names a registry image.
+PULL=0
+[[ ! -f Dockerfile ]] && PULL=1
+[[ -f .env ]] && grep -qE '^EVE_BOT_IMAGE=[^#[:space:]]+/' .env && PULL=1
+IMAGE=$(grep -E '^EVE_BOT_IMAGE=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)
 
 need_creds() {
   if [[ ! -f $CREDS ]]; then
@@ -74,8 +79,17 @@ case "${1:-help}" in
       2>/dev/null || echo "(bot not running)"
     ;;
   update)
-    git pull --ff-only
-    up
+    [[ -d .git ]] && git pull --ff-only
+    if [[ $PULL == 1 ]]; then
+      $DC pull
+      if [[ ! -f Dockerfile && -n $IMAGE ]]; then
+        # refresh docker-compose.yml / scripts from the new image (config + secrets are kept)
+        docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" "$IMAGE" install --force
+      fi
+      $DC up -d
+    else
+      up
+    fi
     $DC ps
     ;;
   backup)

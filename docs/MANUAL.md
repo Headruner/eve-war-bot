@@ -18,7 +18,7 @@ This guide takes you from nothing to a running bot that posts new EVE Online war
 |---|---|
 | A **Discord server** where you are admin (or have *Manage Webhooks*) | the bot posts there |
 | A **DigitalOcean** account | rents the small Linux server (a "droplet") the bot runs on |
-| Access to the **GitHub repository** `andrii-kunitsyn/eve-war-bot` | it holds the bot's code |
+| Access to the **GitHub repository** `Headruner/eve-war-bot` | it holds the bot's code |
 | A computer with a terminal: **Windows** → *Terminal* or *PowerShell* · **macOS** → *Terminal* | to connect to the server |
 
 You don't need to install anything on your own computer.
@@ -87,10 +87,13 @@ The repository is private, so GitHub needs a **token** (a one-time password made
 On the server:
 
 ```bash
-apt-get update && apt-get install -y git
-git clone https://github.com/andrii-kunitsyn/eve-war-bot.git
+cloud-init status --wait
+apt-get -o DPkg::Lock::Timeout=600 update && apt-get -o DPkg::Lock::Timeout=600 install -y git
+git clone https://github.com/Headruner/eve-war-bot.git
 cd eve-war-bot
 ```
+
+> The first line waits until the new droplet has finished setting itself up. On a brand-new server Ubuntu installs updates by itself for a few minutes. Without the wait you can get `Could not get lock /var/lib/apt/lists/lock`.
 
 When it asks for **Username**, type your GitHub user name. For **Password**, paste the **token** (again, nothing is shown while you type).
 
@@ -216,7 +219,7 @@ Always run these from the `eve-war-bot` folder: after logging in, type `cd eve-w
 
 Normally the server builds the bot itself (steps 6.1/6.3). That's fine for this small bot. If you'd rather have GitHub build it — less work and memory for the droplet — do this:
 
-1. On GitHub, open the repository → **Actions**. After each change pushed to `main`, the workflow *test-and-build* runs and publishes the image `ghcr.io/andrii-kunitsyn/eve-war-bot`.
+1. On GitHub, open the repository → **Actions**. After each change pushed to `main`, the workflow *test-and-build* runs and publishes the image `ghcr.io/headruner/eve-war-bot` (GitHub image names are always lowercase).
 2. Create a second token like in step 4.1, but under *Personal access tokens* → **Tokens (classic)**, with only the scope **`read:packages`**.
 3. On the server:
    ```bash
@@ -226,6 +229,31 @@ Normally the server builds the bot itself (steps 6.1/6.3). That's fine for this 
    bash scripts/bot.sh start
    ```
 From now on, `start` and `update` download the ready-made image instead of building it.
+
+---
+
+## 8b. Option C — install from your Nexus (no code on the server)
+
+Use this when someone has already uploaded the bot to your company's **Nexus** (see README → *Delivery through Nexus*). The server then needs **no git and no code**, only Docker and one command.
+
+You need from the Nexus admin: the **registry address** (e.g. `nexus.example.com:8083`), a **user name** and a **password**.
+
+1. Prepare the server as in step 4.2 (Docker, swap, firewall). If you don't have the code on the server, ask for the file `setup-droplet.sh`, or install Docker the way your admin recommends.
+2. Log in to Nexus once:
+   ```bash
+   docker login <registry-address>
+   ```
+   ✅ `Login Succeeded`
+3. Create the bot's folder and unpack everything into it (this is the one command):
+   ```bash
+   mkdir -p ~/eve-war-bot && cd ~/eve-war-bot
+   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" <registry-address>/eve-war-bot:latest install
+   ```
+   ✅ A list of `written ...` files and the next steps.
+4. Put in your secrets — exactly as in **step 5** (`nano config/credentials.json`).
+5. Check, test and start — exactly as in **step 6** (`bash scripts/bot.sh check`, `test`, `start`).
+
+**Updating later:** `bash scripts/bot.sh update`. It downloads the newest version from Nexus and restarts. Your secrets and settings stay as they are.
 
 ---
 
@@ -241,6 +269,9 @@ From now on, `start` and `update` download the ready-made image instead of build
 | `Scrape error: No war rows found` | DOTLAN changed its web page. The code needs an update; send the log to the developer. |
 | `War report for ... unavailable` | CCP's ESI service didn't answer. The war is still posted, and the report is filled in on the next hourly update. |
 | No new messages for a long time | that can be normal: some days have few new wars. Check `logs` — the line `Parsed NN wars, 0 new.` means it is working. |
+| `unauthorized` or `no basic auth credentials` (Option C) | run `docker login <registry-address>` again with the Nexus user. |
+| `server gave HTTP response to HTTPS client` (Option C) | Nexus uses plain HTTP. Ask the admin for HTTPS, or for the `insecure-registries` setting. |
+| `Could not get lock /var/lib/apt/lists/lock … held by process … (apt-get)` | Ubuntu is installing its own updates (normal on a new droplet). **Don't delete the lock.** Wait with `cloud-init status --wait`, then run the command again. `setup-droplet.sh` waits by itself. |
 | `git clone` says *Authentication failed* | use the **token** as the password, not your GitHub password. Check that the token has access to `eve-war-bot`. |
 | `Permission denied (publickey)` on `ssh` | you chose an SSH key in step 2 but this computer doesn't have it. Use the **Droplet Console** in the browser instead. |
 | You want to start from scratch (the bot forgets all posted wars) | `docker compose down -v`, then `bash scripts/bot.sh start`. ⚠️ This deletes the bot's memory. |

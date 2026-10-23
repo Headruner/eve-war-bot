@@ -187,6 +187,16 @@ def _heartbeat(path: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["install"]:                      # unpack deployment bundle
+        ip = argparse.ArgumentParser(prog="eve-war-bot install")
+        ip.add_argument("--target", default="/out", help="folder to write into (mounted)")
+        ip.add_argument("--force", action="store_true",
+                        help="refresh docker-compose.yml/scripts; never touches your config")
+        iargs = ip.parse_args(argv[1:])
+        from .installer import install
+        return install(iargs.target, iargs.force)
+
     ap = argparse.ArgumentParser(prog="eve-war-bot")
     ap.add_argument("--once", action="store_true", help="run a single cycle and exit")
     ap.add_argument("--check-config", action="store_true", help="validate files and exit")

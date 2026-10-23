@@ -1,0 +1,43 @@
+# EVE War Bot - server deployment (image from a registry such as Nexus).
+# Created by:  docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/out" <image> install
+# The image to run is set in .env (EVE_BOT_IMAGE=...).
+services:
+  eve-war-bot:
+    image: ${EVE_BOT_IMAGE:?set EVE_BOT_IMAGE in .env}
+    pull_policy: missing
+    container_name: eve-war-bot
+    restart: unless-stopped
+
+    volumes:
+      # secrets + settings, read-only, edited on the host
+      - ./config/credentials.json:/app/config/credentials.json:ro
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      # notification storage - survives restarts / re-creation / upgrades
+      - eve-war-bot-data:/data
+    environment:
+      - TZ=UTC
+
+    # ---- resource limits (1 GB / 2 vCPU droplet; bot uses ~45-80 MB) ----
+    mem_limit: 256m
+    memswap_limit: 384m
+    mem_reservation: 96m
+    cpus: "0.5"
+    pids_limit: 64
+
+    # ---- hardening ----
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  eve-war-bot-data:

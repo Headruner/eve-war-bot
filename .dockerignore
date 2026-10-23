@@ -6,8 +6,9 @@ data/
 backups/
 tests/
 docs/
-scripts/
 .env
 config/credentials.json
 *.db
 *.md
+!deploy/DEPLOY.md
+scripts/publish-nexus.*

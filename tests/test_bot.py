@@ -1,3 +1,4 @@
+import os
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -251,3 +252,54 @@ def test_dry_run_never_touches_real_storage(tmp_path, monkeypatch):
     monkeypatch.setenv("CREDENTIALS_FILE", str(tmp_path / "missing.json"))
     assert m.main(["--once", "--html-file", str(FIX)]) == 0
     assert not real_db.exists()
+
+
+# ---------- install command (deployment bundle inside the image) ------------
+def _bundle(tmp_path):
+    """Builds the bundle exactly like the Dockerfile COPY lines do."""
+    import shutil
+    root = Path(__file__).parent.parent
+    b = tmp_path / "bundle"
+    (b / "config").mkdir(parents=True)
+    (b / "scripts").mkdir()
+    for src, dst in [("deploy/docker-compose.yml", "docker-compose.yml"),
+                     ("deploy/DEPLOY.md", "DEPLOY.md"),
+                     ("config/config.yaml", "config/config.yaml"),
+                     ("config/credentials.example.json", "config/credentials.example.json"),
+                     ("scripts/bot.sh", "scripts/bot.sh"),
+                     ("scripts/setup-droplet.sh", "scripts/setup-droplet.sh")]:
+        shutil.copyfile(root / src, b / dst)
+    return b
+
+
+def test_install_unpacks_bundle_and_keeps_user_files(tmp_path, monkeypatch, capsys):
+    import importlib
+    import app.installer as inst
+    monkeypatch.setenv("EVE_BOT_BUNDLE", str(_bundle(tmp_path)))
+    monkeypatch.setenv("EVE_BOT_IMAGE_REF", "nexus.example.com:8083/eve-war-bot:latest")
+    importlib.reload(inst)
+    out = tmp_path / "srv"
+    out.mkdir()
+    from app import main as m
+    assert m.main(["install", "--target", str(out)]) == 0
+    for f in ["docker-compose.yml", ".env", "DEPLOY.md", "config/config.yaml",
+              "config/credentials.json", "scripts/bot.sh"]:
+        assert (out / f).is_file(), f
+    assert "EVE_BOT_IMAGE=nexus.example.com:8083/eve-war-bot:latest" in (out / ".env").read_text()
+    assert json.loads((out / "config/credentials.json").read_text())["discord"]["webhook_url"] == ""
+    assert os.access(out / "scripts/bot.sh", os.X_OK)
+
+    # user edits survive a second install, even with --force
+    (out / "config/credentials.json").write_text('{"discord": {"webhook_url": "https://x"}}')
+    (out / "config/config.yaml").write_text("dotlan: {poll_interval_min: 30}\n")
+    (out / "docker-compose.yml").write_text("old")
+    assert m.main(["install", "--target", str(out), "--force"]) == 0
+    assert "https://x" in (out / "config/credentials.json").read_text()
+    assert "30" in (out / "config/config.yaml").read_text()
+    assert (out / "docker-compose.yml").read_text() != "old"      # managed file refreshed
+    assert "kept     config/credentials.json" in capsys.readouterr().out
+
+
+def test_install_refuses_unwritable_or_missing_target(tmp_path, monkeypatch):
+    from app.installer import install
+    assert install(str(tmp_path / "nope")) == 2
