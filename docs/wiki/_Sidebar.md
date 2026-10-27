@@ -8,6 +8,7 @@
 - [5 Integration tests](05-Integration-Tests.md)
 - [6 Statistics](06-Statistics.md)
 - [7 Manual tests](07-Manual-Test-Scenarios.md)
+- [8 Architecture (C4)](08-Architecture-C4.md)
 
 **Epics**
 

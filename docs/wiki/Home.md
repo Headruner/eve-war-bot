@@ -20,6 +20,7 @@ The EVE War Bot reads every new war declaration from **CCP's official EVE Online
 | 5 | [Integration tests](05-Integration-Tests.md) | Automated test catalogue, traceability to stories, coverage gaps, planned tests |
 | 6 | [Statistics](06-Statistics.md) | **Wars declared on the 1st day of each month**: data, method, how to refresh |
 | 7 | [Manual tests](07-Manual-Test-Scenarios.md) | **Sanity and regression** scenarios with story-point estimates |
+| 8 | [Architecture (C4)](08-Architecture-C4.md) | **C1 context, C2 containers, C3 components, C4 code**; code structure rules and proposed target layout |
 
 Operational guides outside the wiki: [beginner manual](../MANUAL.md) · [technical README](../../README.md) · [server quick guide](../../deploy/DEPLOY.md).
 

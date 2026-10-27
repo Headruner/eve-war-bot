@@ -6,7 +6,7 @@
 | **Owner** | Andrii Kunitsyn (Business Analyst) |
 | **Status** | Draft for review |
 | **Updated** | 2026-10-27 (2.1.0) |
-| **Related** | [Vision](01-Vision.md) · [User stories](03-User-Stories.md) · [Acceptance testing](04-Acceptance-Testing.md) |
+| **Related** | [Architecture (C4)](08-Architecture-C4.md) · [Vision](01-Vision.md) · [User stories](03-User-Stories.md) · [Acceptance testing](04-Acceptance-Testing.md) |
 
 [Home](Home.md) › FRD
 
