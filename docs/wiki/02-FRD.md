@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Product** | EVE War Bot 2.0.0 |
+| **Product** | EVE War Bot 2.1.0 |
 | **Owner** | Andrii Kunitsyn (Business Analyst) |
 | **Status** | Draft for review |
-| **Updated** | 2026-10-24 (2.0.0) |
+| **Updated** | 2026-10-27 (2.1.0) |
 | **Related** | [Vision](01-Vision.md) · [User stories](03-User-Stories.md) · [Acceptance testing](04-Acceptance-Testing.md) |
 
 [Home](Home.md) › FRD
@@ -28,11 +28,13 @@ rectangle "EVE War Bot\n(Docker container)" as BOT
 database "wars.db\n(SQLite on volume)" as DB
 cloud "CCP ESI\nesi.evetech.net\n(public routes)" as ESI
 cloud "EVE Image Server\nimages.evetech.net" as IMG
+cloud "EVE Ref datasets\ndata.everef.net" as REF
 cloud "Discord\nWebhook API" as DIS
 node "Registry\nNexus / GHCR" as REG
 
 BOT --> ESI : /wars/ (new wars), war details,\nnames, corps, alliances, killmails, history
 BOT --> IMG : logos (banner)
+BOT --> REF : structures dataset (daily)
 BOT --> DIS : POST / PATCH messages
 BOT --> DB : state, reports, name cache
 DIS --> M : channel messages
@@ -64,9 +66,10 @@ endif
 :IDs > watermark, not stored\n(oldest first, max_new_per_cycle);
 :GET /wars/{id}/ + names, corps, alliances;
 :Store new wars\n(pending / filtered), move watermark;
+:Refresh structures dataset\n(at most daily, never blocks);
 while (pending wars?) is (yes)
   :Build war report from ESI\n(optional, never blocks);
-  :Build embed + banner;
+  :Build embed + banner\n(+ structures of both parties);
   :POST to Discord;
   if (2xx?) then (yes)
     :state = sent, save message id;
@@ -110,13 +113,14 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 ### EP-03 Rich message content
 
-**Goal:** Make each notification readable at a glance: logos, banner, colours, links.
+**Goal:** Make each notification readable at a glance: logos, banner, colours, links, structures of both sides.
 
 | Feature | Priority | Description | Stories |
 |---|---|---|---|
 | **F-03.1** Logos | Must | High-resolution alliance/corporation logos from the EVE Image Server (entity ID from ESI). | [US-03.01](user-stories/US-03.01.md) |
 | **F-03.2** VS banner | Could | Generated 'Aggressor VS Defender' PNG attached to the message. | [US-03.02](user-stories/US-03.02.md) |
 | **F-03.3** Colours, times, links | Should | Status colour, local-time timestamps, links to zKillboard and DOTLAN (links only). | [US-03.03](user-stories/US-03.03.md) |
+| **F-03.4** Structures of each party | Should | Publicly known Upwell structures of each side (corporation war: the corporation; alliance war: every member corporation) from the daily EVE Ref structures dataset. | [US-03.04](user-stories/US-03.04.md), [US-03.05](user-stories/US-03.05.md), [US-03.06](user-stories/US-03.06.md) |
 
 ### EP-04 War report & live updates
 
@@ -176,6 +180,7 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 | BR-07 | Live updates stop when the war is finished or retracted (after one final edit), when the message has been deleted, or after `track_days` (default 7). |
 | BR-08 | All times are EVE time (UTC). In messages, Discord shows them in each reader's own time zone. |
 | BR-09 | A dry run never posts and never changes the real database. |
+| BR-11 | Structures of a party: corporation war → structures owned by that corporation; alliance war → structures owned by every current member corporation. Only publicly known structures are shown; the field is optional and never delays a post. |
 | BR-10 | 1st-of-month statistics count wars **declared** between 00:00:00 and 23:59:59 UTC on the 1st day of the month. |
 
 ## 7. Non-functional requirements
@@ -200,11 +205,12 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 | ID | Constraint |
 |---|---|
 | C-01 | *Since 2.0* new wars come only from ESI `GET /wars/` (newest 2000 IDs, cached up to 1 h). 1.x parsed the DOTLAN HTML list; that was dropped to depend only on CCP's official API. |
-| C-02 | DOTLAN and zKillboard are only **linked** in messages; the bot never reads them. |
+| C-02 | DOTLAN, zKillboard and Adam4EVE are only **linked** in messages; the bot never reads them. |
 | C-03 | ESI does not return an ISK value per killmail. Only per-side totals (`isk_destroyed`) are used. |
 | C-04 | The target server is a small **shared** VM (1 GB RAM, 2 vCPU) that already runs other web apps and has been in use for years. Setup must not assume a fresh server. |
 | C-05 | *Lesson learned (1.3.0):* an earlier setup script enabled `ufw` (SSH only), changed `vm.swappiness`, ran `apt-get upgrade` and could hang on `cloud-init status --wait`. All of these have been removed, and `scripts/revert-setup.sh` undoes them ([US-06.06](user-stories/US-06.06.md)). |
 | C-06 | Older Docker Compose versions only accept numeric `cpus` values, and mounting single files can go stale on Docker Desktop. The bot uses `cpus: 0.5` and mounts the whole `config/` folder. |
+| C-08 | *Since 2.1* structures are **not** read from adam4eve.eu: its `robots.txt` disallows bots on the structure pages. The bot uses the public EVE Ref structures dataset (`data.everef.net/structures/`), which is built from ESI and includes a backfill from Adam4EVE and other sources. It contains only structures visible to outsiders; it is refreshed about daily, so new or destroyed structures can lag by a day. |
 | C-07 | The bot only makes outgoing connections. Features that need incoming connections (slash commands, buttons) are out of scope. |
 
 ## 9. External interfaces
@@ -215,6 +221,8 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 | ESI `GET /wars/{id}/`, `/corporations/{id}/`, `/alliances/{id}/`, `/alliances/{id}/corporations/`, `POST /universe/names/` | out | HTTPS, JSON | war details, parties | F-01.2 |
 | ESI `GET /wars/{id}/killmails/`, `/killmails/{id}/{hash}/`, `GET /wars/?max_war_id=` | out | HTTPS, JSON | war report, history statistics | F-04.x, F-07.1 |
 | EVE Image Server `/alliances|corporations/{id}/logo` | out | HTTPS, PNG | logos, banner | F-03.1, F-03.2 |
+| EVE Ref `GET data.everef.net/structures/structures-latest.v2.json` | out | HTTPS, JSON (streamed), `ETag`/`Last-Modified` | publicly known structures with owner, type, system | F-03.4 |
+| ESI `GET /alliances/{id}/corporations/`, `POST /universe/names/` | out | HTTPS, JSON | member corporations of an alliance, type/system names | F-03.4 |
 | Discord `POST {webhook}?wait=true`, `PATCH {webhook}/messages/{id}` | out | HTTPS, JSON or multipart | messages, live updates | F-02.x, F-04.3 |
 | `config/credentials.json` | in | JSON | secrets | F-05.1 |
 | `config/config.yaml` | in | YAML | settings | F-05.2 |
@@ -254,7 +262,15 @@ entity names {
   category : TEXT
   updated_at : TEXT
 }
-note right of meta : bootstrapped_at,\nwatermark_war_id
+entity structures {
+  * structure_id : INTEGER <<PK>>
+  --
+  owner_id : INTEGER (corporation)
+  name : TEXT
+  type_id : INTEGER
+  solar_system_id : INTEGER
+}
+note right of meta : bootstrapped_at,\nwatermark_war_id,\nstructures_loaded_at / etag
 note right of names : ESI id -> name cache
 @enduml
 ```
@@ -267,6 +283,8 @@ note right of names : ESI id -> name cache
 | A-02 | The default compatibility date `2025-08-26` is accepted by ESI | Dev | Check the start log on the server ([MT-R-31](07-Manual-Test-Scenarios.md#mt-r-31)) |
 | Q-01 | Should the bot raise its compatibility date regularly (after reading the ESI changelog)? | PO / Dev | Open |
 | Q-02 | Should war end / status changes also get a separate message (in addition to the edit)? | PO | Open |
+| A-03 | The EVE Ref structures dataset stays publicly available and keeps its JSON shape (keyed by structure ID, with `owner_id`) | Dev | Planned contract test IT-P-05 |
+| Q-04 | Should the bot also show structures of the defender's allies? | PO | Open |
 | Q-03 | Should statistics also cover other days, or wars *ended* per month? | PO | Open |
 
 ## 12. Glossary

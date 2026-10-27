@@ -28,6 +28,7 @@ from .models import War
 from .report import build_report, is_over
 from .source import EsiWarSource
 from .store import WarStore
+from .structures import StructureIndex, summarize
 
 PROJECT_URL = "https://github.com/Headruner/eve-war-bot"
 
@@ -133,13 +134,34 @@ def collect_new_wars(s: Settings, store: WarStore, source: EsiWarSource) -> int:
     return new
 
 
+def make_structures(s: Settings, creds: Credentials, store: WarStore) -> StructureIndex | None:
+    if not s.structures_enabled:
+        return None
+    return StructureIndex(store.db, s.structures_url, user_agent(creds), s.structures_refresh_hours)
+
+
+def _structures(index: StructureIndex | None, esi: EsiClient, s: Settings, w: War) -> dict | None:
+    """Structures of both parties; optional - never blocks a post."""
+    if not index:
+        return None
+    try:
+        return {k: summarize(index, esi, p, s.structures_max_listed)
+                for k, p in (("aggressor", w.aggressor), ("defender", w.defender))}
+    except Exception as e:
+        log.warning("Structures for war %s unavailable: %s", w.war_id, e)
+        return None
+
+
 def run_cycle(s: Settings, creds: Credentials, store: WarStore, notifier: DiscordNotifier,
-              esi: EsiClient, source: EsiWarSource | None = None) -> None:
+              esi: EsiClient, source: EsiWarSource | None = None,
+              structures: StructureIndex | None = None) -> None:
     ua = user_agent(creds)
     source = source or EsiWarSource(esi, s.alliance_member_count_max_corps)
 
     # 1+2) READ new wars from ESI and STORE them (dedup by war ID) -----------
     collect_new_wars(s, store, source)
+    if structures:
+        structures.refresh_if_due()                    # daily dataset download
 
     # 3) NOTIFY --------------------------------------------------------------
     pending = store.pending()
@@ -152,7 +174,8 @@ def run_cycle(s: Settings, creds: Credentials, store: WarStore, notifier: Discor
             fname = _banner(w, s, ua, files)
             report = _report(esi, s, w.war_id)
             store.save_report(w.war_id, report)
-            embeds.append(build_embed(w, s, fname, report))
+            embeds.append(build_embed(w, s, fname, report,
+                                      structures=_structures(structures, esi, s, w)))
         payload = build_payload(embeds, s, creds.mention_role_id)
         ids = [w.war_id for w in batch]
         try:
@@ -167,11 +190,12 @@ def run_cycle(s: Settings, creds: Credentials, store: WarStore, notifier: Discor
 
     # 4) LIVE UPDATES of already posted messages ----------------------------
     if s.report_enabled and s.live_updates:
-        update_live_reports(s, creds, store, notifier, esi)
+        update_live_reports(s, creds, store, notifier, esi, structures)
 
 
 def update_live_reports(s: Settings, creds: Credentials, store: WarStore,
-                        notifier: DiscordNotifier, esi: EsiClient) -> None:
+                        notifier: DiscordNotifier, esi: EsiClient,
+                        structures: StructureIndex | None = None) -> None:
     store.expire_live(s.track_days)
     for mid, item in store.live_due(s.update_interval_min, s.track_days).items():
         if _stop.is_set():
@@ -188,7 +212,8 @@ def update_live_reports(s: Settings, creds: Credentials, store: WarStore,
             if over:
                 finished.append(w.war_id)
             fname = f"war_{w.war_id}.png" if item["attachments"] else None
-            embeds.append(build_embed(w, s, fname, new, over=over))
+            embeds.append(build_embed(w, s, fname, new, over=over,
+                                      structures=_structures(structures, esi, s, w)))
         if not changed:
             log.debug("Message %s: report unchanged", mid)
         else:
@@ -291,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     notifier = DiscordNotifier(creds.webhook_url, s.min_seconds_between_posts,
                                dry_run=s.dry_run)
     esi = make_esi(s, creds, store)
+    structures = make_structures(s, creds, store)
     log.info("eve-war-bot %s started (source=ESI %s, compatibility date %s, interval %d min, "
              "report=%s, live=%s, dry_run=%s, stored=%s)",
              __version__, s.esi_base_url, s.esi_compatibility_date, s.poll_interval_min,
@@ -301,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while not _stop.is_set():
             try:
-                run_cycle(s, creds, store, notifier, esi)
+                run_cycle(s, creds, store, notifier, esi, structures=structures)
                 _heartbeat(s.heartbeat_file)
             except WebhookInvalid as e:
                 log.critical("Discord webhook rejected (%s). Fix credentials.json.", e)

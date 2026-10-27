@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Scope** | User acceptance of release 2.0.0 against the [user stories](03-User-Stories.md) |
+| **Scope** | User acceptance of release 2.1.0 against the [user stories](03-User-Stories.md) |
 | **Product owner (accepts)** | Andrii Kunitsyn |
-| **Updated** | 2026-10-24 (2.0.0) |
+| **Updated** | 2026-10-27 (2.1.0) |
 
 ---
 
@@ -41,8 +41,8 @@ Accepted --> [*]
 
 ## 3. Current state
 
-- Acceptance criteria in total: **77**
-- **Accepted (field):** 2 · **Ready for UAT (automated + manual):** 22 · **Ready for UAT (manual only):** 11 · **Not started:** 1
+- Acceptance criteria in total: **86**
+- **Accepted (field):** 2 · **Ready for UAT (automated + manual):** 25 · **Ready for UAT (manual only):** 11 · **Not started:** 1
 
 ## 4. Acceptance matrix
 
@@ -79,6 +79,9 @@ Accepted --> [*]
 | [US-03.01](user-stories/US-03.01.md) Show alliance/corporation logos | 2 | 1 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-11](07-Manual-Test-Scenarios.md#mt-r-11) | — | Ready for UAT |
 | [US-03.02](user-stories/US-03.02.md) Attach a VS banner | 2 | 1 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-11](07-Manual-Test-Scenarios.md#mt-r-11) | — | Ready for UAT |
 | [US-03.03](user-stories/US-03.03.md) Colours, local times and links | 2 | 3 | [MT-S-04](07-Manual-Test-Scenarios.md#mt-s-04), [MT-R-12](07-Manual-Test-Scenarios.md#mt-r-12) | — | Ready for UAT |
+| [US-03.04](user-stories/US-03.04.md) Structures of a corporation in a corporation war | 4 | 3 | [MT-R-33](07-Manual-Test-Scenarios.md#mt-r-33) | — | Ready for UAT |
+| [US-03.05](user-stories/US-03.05.md) Structures of all member corporations in an alliance war | 2 | 3 | [MT-R-34](07-Manual-Test-Scenarios.md#mt-r-34) | — | Ready for UAT |
+| [US-03.06](user-stories/US-03.06.md) Daily structures dataset, never blocking a post | 3 | 3 | [MT-R-33](07-Manual-Test-Scenarios.md#mt-r-33), [MT-R-35](07-Manual-Test-Scenarios.md#mt-r-35) | — | Ready for UAT |
 
 ### EP-04 War report & live updates
 
@@ -95,7 +98,7 @@ Accepted --> [*]
 | Story | ACs | Automated | Manual | Field | Acceptance |
 |---|---:|---|---|---|---|
 | [US-05.01](user-stories/US-05.01.md) Credentials in a JSON file with validation | 3 | 2 | [MT-S-01](07-Manual-Test-Scenarios.md#mt-s-01), [MT-R-04](07-Manual-Test-Scenarios.md#mt-r-04), [MT-R-05](07-Manual-Test-Scenarios.md#mt-r-05), [MT-R-06](07-Manual-Test-Scenarios.md#mt-r-06) | ✔ | **Accepted (field)** |
-| [US-05.02](user-stories/US-05.02.md) Settings in a YAML file | 2 | 1 | [MT-R-27](07-Manual-Test-Scenarios.md#mt-r-27) | — | Ready for UAT |
+| [US-05.02](user-stories/US-05.02.md) Settings in a YAML file | 2 | 2 | [MT-R-27](07-Manual-Test-Scenarios.md#mt-r-27) | — | Ready for UAT |
 | [US-05.03](user-stories/US-05.03.md) Dry run | 2 | 1 | [MT-S-02](07-Manual-Test-Scenarios.md#mt-s-02), [MT-R-28](07-Manual-Test-Scenarios.md#mt-r-28) | ✔ | **Accepted (field)** |
 
 ### EP-06 Deployment & operations

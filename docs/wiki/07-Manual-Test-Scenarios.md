@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Suites** | Sanity (6 scenarios, 7 SP) · Regression (32 scenarios, 84 SP) |
-| **Total** | **91 SP** |
-| **Updated** | 2026-10-24 (2.0.0) |
+| **Suites** | Sanity (6 scenarios, 7 SP) · Regression (35 scenarios, 90 SP) |
+| **Total** | **97 SP** |
+| **Updated** | 2026-10-27 (2.1.0) |
 
 ---
 
@@ -79,7 +79,10 @@ Use a **test channel** with its own webhook for every scenario that posts. Scena
 | [MT-R-30](#mt-r-30) | ESI outage and recovery | [US-01.06](user-stories/US-01.06.md), [US-01.07](user-stories/US-01.07.md) | 2 |
 | [MT-R-31](#mt-r-31) | ESI request rules | [US-01.07](user-stories/US-01.07.md) | 2 |
 | [MT-R-32](#mt-r-32) | Upgrade a 1.x installation | [US-01.08](user-stories/US-01.08.md) | 3 |
-| | **Total regression** | | **84** |
+| [MT-R-33](#mt-r-33) | Structures in a corporation war | [US-03.04](user-stories/US-03.04.md), [US-03.06](user-stories/US-03.06.md) | 2 |
+| [MT-R-34](#mt-r-34) | Structures in an alliance war | [US-03.05](user-stories/US-03.05.md) | 2 |
+| [MT-R-35](#mt-r-35) | Structures dataset unavailable / disabled | [US-03.06](user-stories/US-03.06.md) | 2 |
+| | **Total regression** | | **90** |
 
 ## 4. Test helpers
 
@@ -90,7 +93,7 @@ Puts the newest `N` stored wars back to `pending`, so the bot posts them on the 
 ```bash
 cd ~/eve-war-bot
 N=1   # how many
-docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/data/wars.db');c.execute(\"update wars set state='pending',attempts=0 where war_id in (select war_id from wars order by war_id desc limit $N)\");c.commit();print('queued',c.total_changes)"
+docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/data/wars.db');c.execute(\"update wars set state='pending',attempts=0 where war_id in (select war_id from wars where payload!='{}' order by war_id desc limit $N)\");c.commit();print('queued',c.total_changes)"
 bash scripts/bot.sh restart
 ```
 
@@ -713,5 +716,52 @@ docker compose down -v      # deletes the bot's memory; the next start bootstrap
 2. Watch the log and the channel for one hour.
 
 **Expected result:** Log `Upgrade from 1.x: continuing after war N`; only wars declared after the upgrade point are posted; no repeats.
+
+**Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
+
+<a id="mt-r-33"></a>
+### MT-R-33 — Structures in a corporation war
+
+**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-03.04](user-stories/US-03.04.md), [US-03.06](user-stories/US-03.06.md)
+
+**Preconditions:** Test channel; bot 2.1.0 running; log shows `Structures dataset loaded`.
+
+**Steps**
+
+1. Pick an active war with a corporation that owns public structures (check its corporation on adam4eve.eu or zKillboard).
+2. Re-queue that war, restart, wait one cycle.
+
+**Expected result:** The message has `🏯 Aggressor/Defender structures (N)` fields with types, systems and names; a side without structures shows `none publicly known`. The `Full list on Adam4EVE` link opens the Adam4EVE search for that corporation/alliance.
+
+**Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
+
+<a id="mt-r-34"></a>
+### MT-R-34 — Structures in an alliance war
+
+**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-03.05](user-stories/US-03.05.md)
+
+**Preconditions:** As MT-R-33.
+
+**Steps**
+
+1. Re-queue an active war against an alliance with several corporations, restart, wait one cycle.
+
+**Expected result:** The defender field counts structures of all member corporations; each listed structure names its owner corporation.
+
+**Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______
+
+<a id="mt-r-35"></a>
+### MT-R-35 — Structures dataset unavailable / disabled
+
+**Suite:** Regression · **Estimate:** 2 SP · **Stories:** [US-03.06](user-stories/US-03.06.md)
+
+**Preconditions:** Test copy of the bot.
+
+**Steps**
+
+1. Set `structures.source_url` to `https://data.everef.net/does-not-exist.json`, delete the volume data of a test copy (fresh database), restart, re-queue one war.
+2. Restore the URL; then set `structures.enabled: false`, restart, re-queue one war.
+
+**Expected result:** First: warning `Structures dataset not updated`, the war is posted without structures fields. Disabled: no download in the log, no structures fields.
 
 **Result:** ☐ Pass ☐ Fail · Date: ______ · Tester: ______ · Notes: ______

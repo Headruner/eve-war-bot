@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Document** | Vision & goals |
-| **Product** | EVE War Bot 2.0.0 |
+| **Product** | EVE War Bot 2.1.0 |
 | **Owner** | Andrii Kunitsyn (Business Analyst / Product Owner) |
 | **Status** | Draft for review |
-| **Updated** | 2026-10-24 |
+| **Updated** | 2026-10-27 |
 | **Related** | [FRD](02-FRD.md) · [User stories](03-User-Stories.md) · [Statistics](06-Statistics.md) |
 
 ---
@@ -94,11 +94,11 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 
 ## 6. Scope
 
-**In scope (release 1.x)**
+**In scope (release 2.x)**
 
 - reading new wars from CCP's official API, ESI ([EP-01](02-FRD.md#ep-01-war-detection)), following its documented rules;
 - Discord notifications through a webhook, with filters and an optional role ping ([EP-02](02-FRD.md#ep-02-discord-delivery));
-- rich messages: logos, banner, colours, links ([EP-03](02-FRD.md#ep-03-rich-message-content));
+- rich messages: logos, banner, colours, links, publicly known structures of both parties ([EP-03](02-FRD.md#ep-03-rich-message-content));
 - a war report with live updates, built from CCP ESI ([EP-04](02-FRD.md#ep-04-war-report--live-updates));
 - configuration through `credentials.json` and `config.yaml` ([EP-05](02-FRD.md#ep-05-configuration--secrets));
 - Docker deployment on a small or shared Linux server, Nexus/GHCR delivery, CI ([EP-06](02-FRD.md#ep-06-deployment--operations));
@@ -110,7 +110,8 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 - in-game notifications, EVE SSO login, private (authenticated) ESI data;
 - more than one Discord channel per bot instance (run several instances instead);
 - a web UI or dashboard;
-- reading any third-party website (DOTLAN, zKillboard). Since 2.0 they are only linked in messages.
+- reading any third-party website (DOTLAN, zKillboard, Adam4EVE). Since 2.0 they are only linked in messages. Structures come from the public EVE Ref dataset, because Adam4EVE's `robots.txt` disallows bots on its structure pages;
+- private structures (not visible to outsiders) — no public source can know them.
 
 ## 7. Constraints and principles
 
@@ -128,7 +129,8 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 | 1.2 | Container limits and hardening, operator scripts, beginner manual, CI | Done |
 | 1.3 | Nexus delivery, one-command install, safe setup, revert script, `stats` | Done |
 | 2.0 | War source switched from DOTLAN (HTML) to CCP ESI (`/wars/`), ESI caching and rate-limit rules, upgrade path from 1.x | Done, field verification pending |
-| 2.1 (proposal) | KPI report ([US-07.02](user-stories/US-07.02.md)), closing the [automated test gaps](05-Integration-Tests.md#4-coverage-gaps) | Planned |
+| 2.1 | Structures of each party in every message (corporation war: the corporation; alliance war: all member corporations), daily EVE Ref dataset ([F-03.4](02-FRD.md#ep-03-rich-message-content)) | Done, field verification pending |
+| 2.2 (proposal) | KPI report ([US-07.02](user-stories/US-07.02.md)), closing the [automated test gaps](05-Integration-Tests.md#4-coverage-gaps) | Planned |
 
 ## 9. Risks
 
@@ -138,4 +140,5 @@ docker compose exec eve-war-bot python -c "import sqlite3;c=sqlite3.connect('/da
 | ESI unavailable (downtime ~11:00 UTC, incidents) | Delay | Errors logged, retried next cycle, no wars lost ([US-01.06](user-stories/US-01.06.md)) |
 | App banned for breaking ESI rules | Feature stops | Caching, rate limits and User-Agent rules implemented and tested ([US-01.07](user-stories/US-01.07.md)) |
 | Webhook URL leaks | Spam in the channel | Webhook only in `credentials.json`; regenerate the webhook in Discord |
+| Structures dataset unavailable or changes shape | No structures field in messages | Optional field, never blocks posting; old data kept; warning in the log ([US-03.06](user-stories/US-03.06.md)) |
 | Changes to a shared server | Other apps disrupted | Principle "don't touch the host", [revert script](user-stories/US-06.06.md) |

@@ -182,6 +182,7 @@ bash scripts/bot.sh logs
 ```
 
 ✅ About every 15 minutes you see a line like `ESI: 2000 war IDs listed, 0 new.` When a new war appears: `Notified war(s) [763600] -> message ...`
+Shortly after the start you also see `Structures dataset loaded: N structures with an owner.` (the first download takes up to a few minutes; after that it is refreshed once a day). From then on, every message shows the structures of both sides.
 Press **Ctrl + C** to leave the log. The bot keeps running.
 
 **You're done.** You can close the terminal (type `exit`). The bot runs on its own, restarts by itself if it crashes, and starts again automatically when the server reboots.
@@ -212,6 +213,7 @@ Always run these from the `eve-war-bot` folder: after logging in, type `cd eve-w
 | `statuses: [none, open_for_allies, mutual]` | which kinds of wars to post |
 | `min_defender_members: 0` | skip wars against tiny defenders |
 | `banner_enabled: true` | the "A VS D" picture |
+| `structures: enabled: true` | list the publicly known structures (citadels, engineering complexes, refineries) of both sides; `max_listed: 5` = how many are named |
 | `live_updates: true` | update the war report (kills, score) in the message every hour |
 
 ---

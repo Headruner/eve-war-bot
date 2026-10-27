@@ -6,7 +6,7 @@
 |---|---|
 | **Test code** | `tests/test_bot.py` (fake ESI class, mock ESI HTTP server, mock Discord server) |
 | **Runs** | locally with `pytest -q` and on every push / PR (GitHub Actions `test-and-build`) |
-| **Updated** | 2026-10-24 (2.0.0) |
+| **Updated** | 2026-10-27 (2.1.0) |
 
 ---
 
@@ -14,8 +14,8 @@
 
 | Level | What is real | What is replaced | Count |
 |---|---|---|---:|
-| Unit | War source mapping, embeds, report builder, config loader, User-Agent, statistics algorithm | ESI (fake class), files | 11 |
-| Integration | Full poll cycle: ESI source → SQLite store → embed builder → HTTP client → **local mock Discord webhook server**; **real HTTP to a local mock ESI server** for caching, headers and 429; `install` with a real bundle folder | ESI (fake class or local HTTP server), Discord (local HTTP server) | 14 |
+| Unit | War source mapping, structures summary, embeds, report builder, config loader, User-Agent, statistics algorithm | ESI (fake class), files | 14 |
+| Integration | Full poll cycle: ESI source → SQLite store → embed builder → HTTP client → **local mock Discord webhook server**; **real HTTP to a local mock ESI server** for caching, headers and 429; **real HTTP to a local mock structures-dataset server** (streaming, ETag/304); `install` with a real bundle folder | ESI (fake class or local HTTP server), Discord (local HTTP server) | 17 |
 | Contract / end-to-end | — (planned, see §5) | — | 0 |
 
 ```plantuml
@@ -47,7 +47,7 @@ pytest -q                      # all tests
 pytest -q -k live_update       # one test
 ```
 
-Expected: **25 passed**. In CI, the image is only built and pushed when all tests pass.
+Expected: **31 passed**. In CI, the image is only built and pushed when all tests pass.
 
 ## 3. Test catalogue
 
@@ -76,10 +76,16 @@ Expected: **25 passed**. In CI, the image is only built and pushed when all test
 | 21 | <a id="test_dry_run_never_touches_real_storage"></a>`test_dry_run_never_touches_real_storage` | Integration | [US-05.03](user-stories/US-05.03.md) | dry run uses a temporary database |
 | 22 | <a id="test_install_unpacks_bundle_and_keeps_user_files"></a>`test_install_unpacks_bundle_and_keeps_user_files` | Integration | [US-06.08](user-stories/US-06.08.md) | bundle written, `.env` image ref, user files kept with `--force` |
 | 23 | <a id="test_install_refuses_unwritable_or_missing_target"></a>`test_install_refuses_unwritable_or_missing_target` | Unit | [US-06.08](user-stories/US-06.08.md) | clear error for a missing target |
-| 24 | <a id="test_stats_counts_wars_on_first_day_of_month"></a>`test_stats_counts_wars_on_first_day_of_month` | Unit | [US-07.01](user-stories/US-07.01.md) | binary search finds exactly the wars of each 1st day (checked against brute force) with < 400 API calls |
-| 25 | <a id="test_stats_bot_columns_from_database"></a>`test_stats_bot_columns_from_database` | Unit | [US-07.01](user-stories/US-07.01.md) | seen/posted counts from the database, `—` before the bot started |
+| 24 | <a id="test_structures_download_streamed_and_etag"></a>`test_structures_download_streamed_and_etag` | Integration | [US-03.06](user-stories/US-03.06.md) | real HTTP to a mock dataset server: streamed load, entries without owner skipped, `If-None-Match` → 304 keeps data, no download before `refresh_hours` |
+| 25 | <a id="test_structures_corp_and_alliance_summary"></a>`test_structures_corp_and_alliance_summary` | Unit | [US-03.04](user-stories/US-03.04.md), [US-03.05](user-stories/US-03.05.md) | corporation → own structures; alliance → all member corporations with owner names; counts per type, top systems, `max_listed` |
+| 26 | <a id="test_structures_shown_in_posted_message"></a>`test_structures_shown_in_posted_message` | Integration | [US-03.04](user-stories/US-03.04.md), [US-03.05](user-stories/US-03.05.md) | full cycle: aggressor and defender structure fields in the posted embed, `none publicly known`, `… N more`, Adam4EVE links |
+| 27 | <a id="test_adam4eve_link_per_corporation_and_alliance"></a>`test_adam4eve_link_per_corporation_and_alliance` | Unit | [US-03.04](user-stories/US-03.04.md), [US-03.05](user-stories/US-03.05.md) | Adam4EVE structure search link: `corp=<id>` for corporations, `alliance=<id>` for alliances, none without an ID |
+| 28 | <a id="test_structures_unavailable_never_blocks_posting"></a>`test_structures_unavailable_never_blocks_posting` | Integration | [US-03.06](user-stories/US-03.06.md) | dataset server down → warning, war posted without structures field |
+| 29 | <a id="test_structures_config_keys"></a>`test_structures_config_keys` | Unit | [US-03.06](user-stories/US-03.06.md), [US-05.02](user-stories/US-05.02.md) | `structures.*` keys and defaults, `enabled: false` |
+| 30 | <a id="test_stats_counts_wars_on_first_day_of_month"></a>`test_stats_counts_wars_on_first_day_of_month` | Unit | [US-07.01](user-stories/US-07.01.md) | binary search finds exactly the wars of each 1st day (checked against brute force) with < 400 API calls |
+| 31 | <a id="test_stats_bot_columns_from_database"></a>`test_stats_bot_columns_from_database` | Unit | [US-07.01](user-stories/US-07.01.md) | seen/posted counts from the database, `—` before the bot started |
 
-Stories with at least one automated test: **24 of 36**.
+Stories with at least one automated test: **27 of 39**.
 Stories without an automated test yet: [US-02.02](user-stories/US-02.02.md), [US-02.03](user-stories/US-02.03.md), [US-02.04](user-stories/US-02.04.md), [US-04.05](user-stories/US-04.05.md), [US-06.01](user-stories/US-06.01.md), [US-06.03](user-stories/US-06.03.md), [US-06.04](user-stories/US-06.04.md), [US-06.05](user-stories/US-06.05.md), [US-06.06](user-stories/US-06.06.md), [US-06.07](user-stories/US-06.07.md), [US-06.09](user-stories/US-06.09.md), [US-07.02](user-stories/US-07.02.md).
 
 ## 4. Coverage gaps
@@ -99,6 +105,7 @@ Stories without an automated test yet: [US-02.02](user-stories/US-02.02.md), [US
 | IT-P-01 | Contract test against live ESI (nightly, read-only): `/wars/`, `/wars/{id}/`, `/corporations/{id}/`, `/alliances/{id}/`, `/universe/names/`; checks fields and the compatibility date | [US-01.02](user-stories/US-01.02.md), [US-01.07](user-stories/US-01.07.md), [US-04.01](user-stories/US-04.01.md), [US-07.01](user-stories/US-07.01.md) |
 | IT-P-02 | Discord sandbox channel: post, edit and delete a real message with banner | [US-02.01](user-stories/US-02.01.md), [US-03.02](user-stories/US-03.02.md), [US-04.03](user-stories/US-04.03.md) |
 | IT-P-03 | Container smoke test in CI: build, `--check-config`, dry run, health check | [US-06.01](user-stories/US-06.01.md), [US-06.03](user-stories/US-06.03.md) |
+| IT-P-05 | Contract test against the live EVE Ref structures dataset (nightly): file reachable, JSON keyed by structure ID, `owner_id`/`type_id`/`solar_system_id` present | [US-03.06](user-stories/US-03.06.md) |
 | IT-P-04 | `setup-droplet.sh` / `revert-setup.sh` on a disposable Ubuntu 22.04 VM with a dummy web app | [US-06.05](user-stories/US-06.05.md), [US-06.06](user-stories/US-06.06.md) |
 
 ## 6. Rules for new tests

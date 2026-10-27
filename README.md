@@ -1,6 +1,6 @@
 # EVE War Bot — EVE Online wars (ESI) → Discord
 
-A small Python service in Docker. It reads new war declarations directly from **CCP's official EVE Online API, ESI** ([docs](https://developers.eveonline.com/docs/services/esi/overview/)), and posts each **new** war to a Discord channel as a message with logos and a banner image. Since version 2.0, no website is scraped. The message also carries a **war report**, the same kind of content as a DOTLAN war page: timeline, score (ships killed, ISK destroyed, efficiency), defender allies, recent kills and hot systems. The report is kept up to date by editing the same Discord message while the war runs. It remembers what it has already posted in a SQLite database on a Docker volume, so restarting or rebuilding the container does not create duplicates.
+A small Python service in Docker. It reads new war declarations directly from **CCP's official EVE Online API, ESI** ([docs](https://developers.eveonline.com/docs/services/esi/overview/)), and posts each **new** war to a Discord channel as a message with logos and a banner image. Since version 2.0, no website is scraped. The message also carries a **war report**, the same kind of content as a DOTLAN war page: timeline, score (ships killed, ISK destroyed, efficiency), defender allies, recent kills and hot systems. Since 2.1 each message also lists the **publicly known structures of both sides** (corporation war: the corporation's structures; alliance war: the structures of every member corporation). The report is kept up to date by editing the same Discord message while the war runs. It remembers what it has already posted in a SQLite database on a Docker volume, so restarting or rebuilding the container does not create duplicates.
 
 > **Project documentation** (vision, KPIs, FRD, user stories, tests, statistics): [`docs/wiki/Home.md`](docs/wiki/Home.md).
 >
@@ -41,6 +41,7 @@ eve-war-bot/
 │   ├── store.py                  # SQLite notification storage (dedup)
 │   ├── embeds.py                 # rich Discord embed builder
 │   ├── banner.py                 # "Aggressor VS Defender" PNG generator (Pillow)
+│   ├── structures.py             # structures of each party: daily EVE Ref dataset (streamed) -> SQLite, per-party summary
 │   ├── discord_notifier.py       # Discord webhook client: post + edit, rate limits, retries
 │   ├── stats.py                  # `stats` command: wars declared on the 1st of each month (ESI + database)
 │   ├── installer.py              # `install` command: unpacks the deployment bundle from the image
@@ -124,12 +125,14 @@ node "Docker host" {
     component "esi.py\nreport.py" as R
     component "store.py" as ST
     component "embeds.py\nbanner.py" as E
+    component "structures.py" as SR
     component "discord_notifier.py" as N
   }
   database "volume: eve-war-bot-data\n/data/wars.db" as DB
 }
 cloud "esi.evetech.net\n(CCP ESI, public routes)" as ESI
 cloud "images.evetech.net\n(EVE Image Server)" as IMG
+cloud "data.everef.net\n(EVE Ref structures dataset)" as REF
 cloud "discord.com\nWebhook API" as DIS
 
 CR --> M
@@ -140,6 +143,9 @@ M --> R
 R --> ESI : GET /wars/, /wars/{id}/,\ncorporations, alliances,\nkillmails, POST /universe/names/
 M --> ST
 ST --> DB : SQLite
+M --> SR
+SR --> REF : GET structures-latest.v2.json\n(daily, ETag)
+SR --> DB : table structures
 M --> E
 E --> IMG : GET logos (banner only)
 M --> N
@@ -207,7 +213,7 @@ Since 2.0 the bot reads wars only from ESI, CCP's official API. The [DOTLAN](htt
 | Base URL | `https://esi.evetech.net` with **version-less routes** (`/wars/`, not `/latest/wars/`), as recommended in the ESI docs; configurable with `esi.base_url` |
 | Version | header `X-Compatibility-Date: <esi.compatibility_date>` (default `2025-08-26`). ESI returns the behaviour of that date and rejects future dates |
 | Auth | none: `/wars/`, `/wars/{id}/`, `/corporations/{id}/`, `/alliances/{id}/`, `/universe/names/` are public |
-| User-Agent | `eve-war-bot/2.0.0 (<esi.contact>; +https://github.com/Headruner/eve-war-bot) python-requests/<v>` |
+| User-Agent | `eve-war-bot/2.1.0 (<esi.contact>; +https://github.com/Headruner/eve-war-bot) python-requests/<v>` |
 | Caching | a response is reused until its **`Expires`** time, so ESI is never asked earlier (`/wars/` is cached for up to 1 h). After that the request carries **`If-None-Match`** with the last `ETag`; a `304` means unchanged and costs 1 rate-limit token instead of 2 |
 | Rate limits | token buckets (`X-Ratelimit-Limit` / `-Remaining`): slows down below 10 % · `429` → waits `Retry-After` · old error limit (`X-ESI-Error-Limit-Remain` / `-Reset`, `420`) honoured · `5xx` retried with back-off |
 | Frequency | `source.poll_interval_min` (15). Because of the cache, a real request is only sent about once per hour |
@@ -360,7 +366,18 @@ Ally Corp, Ally Alliance
 📍 Hot systems
 Jita (2)
 🔗 Links
-zKillboard war · DOTLAN war report · Aggressor kills · Defender kills
+🏯 Aggressor structures (3)
+Astrahus ×2 · Raitaru ×1
+📍 Jita (2), Perimeter (1)
+• Nuke Home (Astrahus)
+• Nuke Factory (Raitaru)
+… 1 more
+🔎 Full list on Adam4EVE
+🏯 Defender structures (0)
+none publicly known
+🔎 Adam4EVE
+🔗 Links
+zKillboard war · DOTLAN war report · Aggressor kills · Defender kills · Aggressor structures (Adam4EVE) · Defender structures (Adam4EVE)
 [ banner: aggressor logo  VS  defender logo ]
 Source: EVE Online ESI · War #763527 · report updated • today 21:30
 ```
@@ -407,6 +424,45 @@ end
 Live updates edit existing messages, so they never create duplicates. Turn them off with `report.live_updates: false`, or turn the whole report off with `report.enabled: false`.
 
 ---
+
+### 4.8 Integration 5 — structures of each party (EVE Ref dataset, since 2.1)
+
+| | |
+|---|---|
+| Source | `GET https://data.everef.net/structures/structures-latest.v2.json` ([EVE Ref structures dataset](https://docs.everef.net/datasets/structures.html)): one JSON object keyed by structure ID with `owner_id` (corporation), `name`, `type_id`, `solar_system_id`, … |
+| Why not adam4eve.eu | its `robots.txt` disallows bots on the structure pages (`structures.php`, `info_stations.php`). EVE Ref collects public structures from ESI and includes a backfill from Adam4EVE, so the content is comparable. |
+| When | at start and then at most every `structures.refresh_hours` (24); `If-None-Match` / `If-Modified-Since` → `304` keeps the stored data |
+| How | streamed with `ijson` (constant memory), entries without `owner_id` skipped, written into `structures_new` and swapped with the `structures` table in one transaction |
+| Corporation war | structures with `owner_id` = the corporation |
+| Alliance war | member corporations from ESI `GET /alliances/{id}/corporations/`, then structures of all of them; listed structures name their owner corporation |
+| Names | type and system names through ESI `POST /universe/names/` (cached in `names`) |
+| Failures | download or parse error → warning, old data kept, retry after 1 h; the message is posted without the structures field. Never blocks a post. |
+| Limits | only structures visible to outsiders are known; data is about one day old |
+| Adam4EVE link | each structures field and the Links field link to the Adam4EVE search for the party, e.g. `https://www.adam4eve.eu/structures.php?region=&system=&sector=&corp=&alliance=99010320&search=&location=30000142&maxJumps=999&group=&structure=&since=&market=` (`corp=<id>` for a corporation). Readers open it in the browser; the bot never requests it. |
+
+```plantuml
+@startuml
+title Structures of a war party
+participant "main.py" as M
+participant "structures.py" as S
+database "wars.db\nstructures" as DB
+participant "EVE Ref" as R
+participant "ESI" as E
+M -> S : refresh_if_due()
+alt dataset older than refresh_hours
+  S -> R : GET structures-latest.v2.json\n(If-None-Match)
+  R --> S : 200 (stream) / 304
+  S -> DB : swap table (200 only)
+end
+M -> S : summarize(party)
+alt alliance
+  S -> E : GET /alliances/{id}/corporations/
+end
+S -> DB : SELECT ... WHERE owner_id IN (corps)
+S -> E : POST /universe/names/ (types, systems, owners)
+S --> M : total, by type, top systems, listed
+@enduml
+```
 
 ## 5. Notification storage (no duplicates)
 
@@ -513,6 +569,10 @@ docker compose down -v
 | `filters.watch_entity_ids` | `[]` | only wars that involve these alliance/corp IDs (empty = all wars) |
 | `filters.statuses` | all | which of `none`, `open_for_allies`, `mutual` to post |
 | `filters.min_defender_members` | 0 | skip wars against small defenders (unknown size, e.g. big alliances, is never skipped) |
+| `structures.enabled` | true | add the publicly known structures of both parties (2.1) |
+| `structures.source_url` | `https://data.everef.net/structures/structures-latest.v2.json` | structures dataset (EVE Ref) |
+| `structures.refresh_hours` | 24 | how often the dataset is downloaded (ETag; a 304 costs almost nothing) |
+| `structures.max_listed` | 5 | structures listed by name per side (counts per type and systems are always shown) |
 | `runtime.dry_run` | false | log payloads instead of posting |
 | `runtime.log_level` | INFO | DEBUG / INFO / WARNING |
 
@@ -639,7 +699,7 @@ For a private GitHub repo, the first line won't work. Install Docker with your u
 | PC | `scripts/publish-nexus.ps1` | new `:<version>` and `:latest` in Nexus |
 | VM | `bash scripts/bot.sh update` | pulls `:latest`, runs `install --force` (refreshes compose/scripts, keeps config, secrets, `.env`), restarts |
 
-To stay on a fixed version, set `EVE_BOT_IMAGE=<registry>/eve-war-bot:2.0.0` in `.env` on the VM. `bot.sh` detects a registry setup by the missing `Dockerfile` or a registry image in `.env`, and then pulls instead of building.
+To stay on a fixed version, set `EVE_BOT_IMAGE=<registry>/eve-war-bot:2.1.0` in `.env` on the VM. `bot.sh` detects a registry setup by the missing `Dockerfile` or a registry image in `.env`, and then pulls instead of building.
 
 ## 8. Tests
 
@@ -653,6 +713,7 @@ GitHub Actions runs the same tests on every push and pull request.
 The tests cover:
 - **War source:** building wars from ESI (names, tickers, members, corporations, status, links), silent bootstrap with the watermark, no re-posting after restarts, catch-up in portions, upgrade from a 1.x database, retry after ESI errors, 404 handling.
 - **ESI rules:** version-less route, `X-Compatibility-Date`, `User-Agent` format, `Expires` cache (no request before expiry), `ETag` / `If-None-Match` / 304, `429` with `Retry-After`. These run against a local mock ESI HTTP server.
+- **Structures (2.1):** streamed download from a local mock dataset server with `ETag`/304 and refresh interval, corporation vs. alliance (all member corporations) summaries, fields in the posted message, posting continues when the dataset is unavailable, config keys.
 - **Everything else:** filters, the multipart banner, the war report and live updates, dry runs, `install`, configuration (including 1.x keys and a Windows BOM), and the statistics algorithm.
 
 They run against a fake ESI class, a mock ESI HTTP server and a mock Discord webhook server. They never call the real ESI or Discord.
@@ -662,4 +723,5 @@ They run against a fake ESI class, a mock ESI HTTP server and a mock Discord web
 - Before production, check that the default `esi.compatibility_date` is accepted (the start log shows it; ESI answers with an error for unsupported dates) and consider raising it to a current date after reading the ESI changelog.
 - Alliance member counts for big alliances would need one call per corporation, so they are not summed. Raise `alliance_member_count_max_corps` if needed, but watch the ESI rate limits.
 - ISK value per kill is not part of ESI; it could be added from zKillboard's API if needed. ESI's per-side `isk_destroyed` totals are used for the score.
+- **Structures:** adam4eve.eu is not read, because its `robots.txt` disallows bots on the structure pages. The bot uses the public [EVE Ref structures dataset](https://docs.everef.net/datasets/structures.html), which is built from ESI and includes a backfill from Adam4EVE and other sources. Only structures visible to outsiders are known (private ones are not), and the data is about one day old. The file is large; it is parsed as a stream (`ijson`) so memory stays within the 256 MiB limit, and the first download after a start takes up to a few minutes.
 - War end and status changes are shown by editing the existing message; separate "war ended" messages are not in scope yet.

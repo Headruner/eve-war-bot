@@ -422,7 +422,7 @@ def test_esi_429_waits_retry_after(esi_server):
 
 def test_user_agent_format():
     ua = bot.user_agent(Credentials(webhook_url="", contact="me@example.com"))
-    assert ua.startswith("eve-war-bot/2.0.0 (me@example.com; +https://github.com/Headruner/eve-war-bot)")
+    assert ua.startswith("eve-war-bot/2.1.0 (me@example.com; +https://github.com/Headruner/eve-war-bot)")
     assert "python-requests/" in ua
     assert "(+https://github.com" in bot.user_agent(Credentials(webhook_url=""))
 
@@ -580,3 +580,130 @@ def test_stats_bot_columns_from_database(tmp_path):
     store.close()
     assert _bot_counts(s.sqlite_path, date(2026, 10, 23)) == (2, 1)
     assert _bot_counts(s.sqlite_path, date(2026, 9, 1)) == (None, None)
+
+
+# =============================================================== structures (F-03.4)
+from app.structures import StructureIndex, summarize
+
+DATASET = {
+    "1001": {"structure_id": 1001, "name": "Frat HQ", "owner_id": 98100000, "type_id": 35833,
+             "solar_system_id": 30000142, "position": {"x": 1.5, "y": 2.0, "z": 3.0}},
+    "1002": {"structure_id": 1002, "name": "Frat Mining", "owner_id": 98100001, "type_id": 35832,
+             "solar_system_id": 30000144},
+    "1003": {"structure_id": 1003, "name": "Vanguard Factory", "owner_id": 98230524, "type_id": 35825,
+             "solar_system_id": 30000142},
+    "1004": {"structure_id": 1004, "first_seen": "2026-10-24T06:41:08Z", "is_gettable_structure": False},
+    "1005": {"structure_id": 1005, "name": "Someone else", "owner_id": 99999, "type_id": 35832,
+             "solar_system_id": 30000142},
+}
+STRUCT_NAMES = {35833: "Fortizar", 35832: "Astrahus", 35825: "Raitaru", 30000144: "Perimeter"}
+
+
+class _Dataset(BaseHTTPRequestHandler):
+    log: list = []
+
+    def do_GET(self):
+        _Dataset.log.append(dict(self.headers))
+        if self.headers.get("If-None-Match") == '"s1"':
+            self.send_response(304)
+            self.end_headers()
+            return
+        body = json.dumps(DATASET).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("ETag", '"s1"')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def dataset_url():
+    _Dataset.log = []
+    srv = HTTPServer(("127.0.0.1", 0), _Dataset)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_port}/structures-latest.v2.json"
+    srv.shutdown()
+
+
+def _struct_esi():
+    esi = FakeEsi()
+    esi.other_names.update(STRUCT_NAMES)
+    return esi
+
+
+def test_structures_download_streamed_and_etag(tmp_path, dataset_url):
+    store = WarStore(str(tmp_path / "w.db"))
+    t = [1_000_000.0]
+    idx = StructureIndex(store.db, dataset_url, "ua", refresh_hours=24, clock=lambda: t[0])
+    assert idx.refresh_if_due() is True
+    assert idx.count() == 4                                     # entry without owner skipped
+    assert idx.refresh_if_due() is False and len(_Dataset.log) == 1   # < 24 h: no request
+    t[0] += 25 * 3600
+    assert idx.refresh_if_due() is False                        # 304 Not Modified
+    assert _Dataset.log[1].get("If-None-Match") == '"s1"' and idx.count() == 4
+
+
+def test_structures_corp_and_alliance_summary(tmp_path, dataset_url):
+    store = WarStore(str(tmp_path / "w.db"))
+    idx = StructureIndex(store.db, dataset_url, "ua")
+    idx.refresh()
+    esi = _struct_esi()
+    src = EsiWarSource(esi)
+    corp = summarize(idx, esi, src.war(763534).defender)        # corp war: Vanguard Initiative
+    assert corp["total"] == 1 and corp["by_type"] == [("Raitaru", 1)]
+    assert corp["listed"][0] == {"name": "Vanguard Factory", "type": "Raitaru", "system": "Jita", "owner": None}
+    ally = summarize(idx, esi, src.war(763527).defender)        # alliance war: all 30 member corps
+    assert ally["total"] == 2 and ally["corporations_checked"] == 30
+    assert dict(ally["by_type"]) == {"Fortizar": 1, "Astrahus": 1}
+    assert {x["owner"] for x in ally["listed"]} == {"Frat member 0", "Frat member 1"}
+    none = summarize(idx, esi, src.war(763527).aggressor)
+    assert none["total"] == 0
+
+
+def test_structures_shown_in_posted_message(tmp_path, hook, dataset_url):
+    s = _settings(tmp_path, bootstrap_silent=False)
+    store = WarStore(s.sqlite_path)
+    esi = _struct_esi()
+    for wid in (763533, 763534, 763448):
+        esi.wars_db.pop(wid)
+    idx = StructureIndex(store.db, dataset_url, "ua")
+    bot.run_cycle(s, Credentials(webhook_url=hook), store, DiscordNotifier(hook, 0), esi, structures=idx)
+    fields = json.loads(_posts()[0][1])["embeds"][0]["fields"]
+    by_name = {f["name"]: f["value"] for f in fields}
+    assert "🏯 Defender structures (2)" in by_name
+    assert "Fortizar ×1" in by_name["🏯 Defender structures (2)"]
+    assert by_name["🏯 Aggressor structures"].startswith("none publicly known\n🔎 [Adam4EVE](https://www.adam4eve.eu/structures.php?")
+    assert "Full list on Adam4EVE" in by_name["🏯 Defender structures (2)"]
+    assert "structures (Adam4EVE)" in by_name["🔗 Links"]
+
+
+def test_adam4eve_link_per_corporation_and_alliance():
+    from app.models import Party
+    from app.embeds import adam4eve_url
+    a = adam4eve_url(Party(name="A", type="alliance", entity_id=99010320, members=None, dotlan_url=""))
+    c = adam4eve_url(Party(name="C", type="corporation", entity_id=98000001, members=None, dotlan_url=""))
+    assert a.startswith("https://www.adam4eve.eu/structures.php?") and "&corp=&alliance=99010320&" in a
+    assert "&corp=98000001&alliance=&" in c
+    assert adam4eve_url(Party(name="X", type="corporation", entity_id=None, members=None, dotlan_url="")) is None
+
+
+def test_structures_unavailable_never_blocks_posting(tmp_path, hook):
+    s = _settings(tmp_path, bootstrap_silent=False)
+    store = WarStore(s.sqlite_path)
+    idx = StructureIndex(store.db, "http://127.0.0.1:9/none.json", "ua", timeout=2)
+    bot.run_cycle(s, Credentials(webhook_url=hook), store, DiscordNotifier(hook, 0), FakeEsi(), structures=idx)
+    assert len(_posts()) == 4
+    assert not any("🏯" in f["name"] for f in json.loads(_posts()[0][1])["embeds"][0]["fields"])
+
+
+def test_structures_config_keys(tmp_path):
+    from app.config import load_settings
+    f = tmp_path / "c.yaml"
+    f.write_text("structures: {enabled: false, source_url: 'https://x/y.json', refresh_hours: 6, max_listed: 2}\n")
+    s = load_settings(str(f))
+    assert (s.structures_enabled, s.structures_url, s.structures_refresh_hours, s.structures_max_listed) == \
+        (False, "https://x/y.json", 6.0, 2)
+    assert load_settings(str(tmp_path / "none.yaml")).structures_enabled is True

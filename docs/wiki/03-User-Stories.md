@@ -4,7 +4,7 @@
 
 Every story has its own page. The ID is coded as **`US-<epic>.<number>`**: `US-04.03` is story 3 of epic `EP-04`. Each story belongs to one feature `F-<epic>.<n>` from the [FRD](02-FRD.md).
 
-Status legend: **Done** = implemented in release 2.0.0 · **Planned** = in the backlog. *Field* = observed on a real installation, not only in tests.
+Status legend: **Done** = implemented in release 2.1.0 · **Planned** = in the backlog. *Field* = observed on a real installation, not only in tests.
 
 ## EP-01 War detection
 
@@ -36,13 +36,16 @@ Status legend: **Done** = implemented in release 2.0.0 · **Planned** = in the b
 
 ## EP-03 Rich message content
 
-*Make each notification readable at a glance: logos, banner, colours, links.*
+*Make each notification readable at a glance: logos, banner, colours, links, structures of both sides.*
 
 | ID | Story | Feature | Priority | Status | Auto tests | Manual tests | Field |
 |---|---|---|---|---|---:|---:|---|
 | [US-03.01](user-stories/US-03.01.md) | Show alliance/corporation logos | F-03.1 | Must | Done | 1 | 2 | — |
 | [US-03.02](user-stories/US-03.02.md) | Attach a VS banner | F-03.2 | Could | Done | 1 | 2 | — |
 | [US-03.03](user-stories/US-03.03.md) | Colours, local times and links | F-03.3 | Should | Done | 3 | 2 | — |
+| [US-03.04](user-stories/US-03.04.md) | Structures of a corporation in a corporation war | F-03.4 | Should | Done | 3 | 1 | — |
+| [US-03.05](user-stories/US-03.05.md) | Structures of all member corporations in an alliance war | F-03.4 | Should | Done | 3 | 1 | — |
+| [US-03.06](user-stories/US-03.06.md) | Daily structures dataset, never blocking a post | F-03.4 | Should | Done | 3 | 2 | — |
 
 ## EP-04 War report & live updates
 
@@ -63,7 +66,7 @@ Status legend: **Done** = implemented in release 2.0.0 · **Planned** = in the b
 | ID | Story | Feature | Priority | Status | Auto tests | Manual tests | Field |
 |---|---|---|---|---|---:|---:|---|
 | [US-05.01](user-stories/US-05.01.md) | Credentials in a JSON file with validation | F-05.1 | Must | Done | 2 | 4 | ✔ |
-| [US-05.02](user-stories/US-05.02.md) | Settings in a YAML file | F-05.2 | Must | Done | 1 | 1 | — |
+| [US-05.02](user-stories/US-05.02.md) | Settings in a YAML file | F-05.2 | Must | Done | 2 | 1 | — |
 | [US-05.03](user-stories/US-05.03.md) | Dry run | F-05.3 | Should | Done | 1 | 2 | ✔ |
 
 ## EP-06 Deployment & operations
@@ -93,6 +96,6 @@ Status legend: **Done** = implemented in release 2.0.0 · **Planned** = in the b
 
 ## Summary
 
-- Stories: **36** · done: **35** · planned: **1**
-- With automated tests: **24** · with manual scenarios: **35**
+- Stories: **39** · done: **38** · planned: **1**
+- With automated tests: **27** · with manual scenarios: **38**
 - Field column: ✔ verified · ◐ partly or simulated · — pending

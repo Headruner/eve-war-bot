@@ -56,6 +56,11 @@ class Settings:
     live_updates: bool = True
     update_interval_min: int = 60
     track_days: int = 7
+    # structures of each party (EVE Ref dataset)
+    structures_enabled: bool = True
+    structures_url: str = "https://data.everef.net/structures/structures-latest.v2.json"
+    structures_refresh_hours: float = 24
+    structures_max_listed: int = 5
     # filters
     watch_entity_ids: list[int] = field(default_factory=list)
     statuses: list[str] = field(default_factory=lambda: ["none", "open_for_allies", "mutual"])
@@ -116,6 +121,10 @@ def load_settings(path: str | None = None) -> Settings:
     s.live_updates = bool(_get(raw, "report.live_updates", s.live_updates))
     s.update_interval_min = int(_get(raw, "report.update_interval_min", s.update_interval_min))
     s.track_days = int(_get(raw, "report.track_days", s.track_days))
+    s.structures_enabled = bool(_get(raw, "structures.enabled", s.structures_enabled))
+    s.structures_url = str(_get(raw, "structures.source_url", s.structures_url))
+    s.structures_refresh_hours = float(_get(raw, "structures.refresh_hours", s.structures_refresh_hours))
+    s.structures_max_listed = int(_get(raw, "structures.max_listed", s.structures_max_listed))
     s.watch_entity_ids = [int(x) for x in _get(raw, "filters.watch_entity_ids", [])]
     s.statuses = list(_get(raw, "filters.statuses", s.statuses))
     s.min_defender_members = int(_get(raw, "filters.min_defender_members", s.min_defender_members))

@@ -1,13 +1,13 @@
 # EVE War Bot — Wiki
 
-The EVE War Bot reads every new war declaration from **CCP's official EVE Online API, [ESI](https://developers.eveonline.com/docs/services/esi/overview/)**, and posts it to a Discord channel. Each message carries logos, a banner and a war report from CCP ESI that keeps updating while the war runs. It runs unattended in a small Docker container.
+The EVE War Bot reads every new war declaration from **CCP's official EVE Online API, [ESI](https://developers.eveonline.com/docs/services/esi/overview/)**, and posts it to a Discord channel. Each message carries logos, a banner, the publicly known structures of both sides and a war report from CCP ESI that keeps updating while the war runs. It runs unattended in a small Docker container.
 
 | | |
 |---|---|
-| **Release** | 2.0.0 (war source: ESI instead of DOTLAN) |
+| **Release** | 2.1.0 (structures of each party; war source: ESI) |
 | **Owner** | Andrii Kunitsyn (Business Analyst / Product Owner) |
 | **Repository** | [Headruner/eve-war-bot](https://github.com/Headruner/eve-war-bot) |
-| **Updated** | 2026-10-24 |
+| **Updated** | 2026-10-27 |
 
 ## Pages
 

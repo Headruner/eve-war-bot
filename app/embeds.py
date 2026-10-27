@@ -50,6 +50,18 @@ def zkill_url(p: Party) -> str | None:
     return f"{ZKILL}/{'alliance' if p.type == 'alliance' else 'corporation'}/{p.entity_id}/"
 
 
+ADAM4EVE = "https://www.adam4eve.eu/structures.php"
+
+
+def adam4eve_url(p: Party) -> str | None:
+    """Adam4EVE structure search for a corporation or alliance (link only, never read by the bot)."""
+    if not p.entity_id:
+        return None
+    corp, alliance = ("", p.entity_id) if p.type == "alliance" else (p.entity_id, "")
+    return (f"{ADAM4EVE}?region=&system=&sector=&corp={corp}&alliance={alliance}&search="
+            f"&location=30000142&maxJumps=999&group=&structure=&since=&market=")
+
+
 def _party_field(label: str, p: Party, ticker: str | None = None) -> dict:
     ticker = ticker or getattr(p, "ticker", None)
     tick = f" [{ticker}]" if ticker else ""
@@ -119,8 +131,32 @@ def _report_fields(w: War, r: dict, s: Settings) -> list[dict]:
     return fields
 
 
+def _structures_field(label: str, st: dict | None, p: Party | None = None) -> dict | None:
+    if st is None:
+        return None
+    more = adam4eve_url(p) if p else None
+    if not st["total"]:
+        value = "none publicly known" + (f"\n🔎 [Adam4EVE]({more})" if more else "")
+        return {"name": f"🏯 {label} structures", "value": value, "inline": True}
+    lines = [" · ".join(f"{t} ×{n}" for t, n in st["by_type"][:6])]
+    if st.get("top_systems"):
+        lines.append("📍 " + " · ".join(f"{sy} ({n})" for sy, n in st["top_systems"]))
+    for x in st.get("listed", []):
+        owner = f" · {x['owner']}" if x.get("owner") else ""
+        lines.append(f"• {x['name']} ({x['type']}){owner}")
+    if st["total"] > len(st.get("listed", [])):
+        lines.append(f"… {st['total'] - len(st.get('listed', []))} more")
+    value = "\n".join(lines)
+    if more:
+        tail = f"\n🔎 [Full list on Adam4EVE]({more})"
+        value = value[:1024 - len(tail)] + tail
+    return {"name": f"🏯 {label} structures ({st['total']})", "value": value[:1024],
+            "inline": False}
+
+
 def build_embed(w: War, s: Settings, banner_filename: str | None = None,
-                report: dict | None = None, over: bool = False) -> dict:
+                report: dict | None = None, over: bool = False,
+                structures: dict | None = None) -> dict:
     ts = int(w.declared_at.timestamp()) if w.declared_at else None
     a_tick = report["aggressor"].get("ticker") if report else None
     d_tick = report["defender"].get("ticker") if report else None
@@ -136,6 +172,9 @@ def build_embed(w: War, s: Settings, banner_filename: str | None = None,
     for lbl, p in (("Aggressor", w.aggressor), ("Defender", w.defender)):
         if (u := zkill_url(p)):
             links.append(f"[{lbl} kills]({u})")
+    for lbl, p in (("Aggressor", w.aggressor), ("Defender", w.defender)):
+        if (u := adam4eve_url(p)):
+            links.append(f"[{lbl} structures (Adam4EVE)]({u})")
 
     fields = [_party_field("Aggressor", w.aggressor, a_tick),
               _party_field("Defender", w.defender, d_tick),
@@ -145,6 +184,11 @@ def build_embed(w: War, s: Settings, banner_filename: str | None = None,
     else:
         fields.append({"name": "Declared (EVE time)",
                        "value": f"<t:{ts}:F>\n<t:{ts}:R>" if ts else "n/a", "inline": True})
+    if structures:
+        for lbl, key, p in (("Aggressor", "aggressor", w.aggressor), ("Defender", "defender", w.defender)):
+            f = _structures_field(lbl, structures.get(key), p)
+            if f:
+                fields.append(f)
     fields.append({"name": "🔗 Links", "value": " · ".join(links)[:1024], "inline": False})
 
     footer = f"Source: EVE Online ESI · War #{w.war_id}"
@@ -178,7 +222,7 @@ def _fit_limit(embed: dict) -> None:
     def size(e):
         return (len(e.get("title", "")) + len(e["author"]["name"]) + len(e["footer"]["text"])
                 + sum(len(f["name"]) + len(f["value"]) for f in e["fields"]))
-    optional = ("📍 Hot systems", "🤝", "💥")
+    optional = ("🏯", "📍 Hot systems", "🤝", "💥")
     while size(embed) > EMBED_LIMIT:
         idx = next((i for i, f in enumerate(embed["fields"])
                     if f["name"].startswith(optional)), None)
