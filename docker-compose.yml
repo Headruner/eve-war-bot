@@ -4,7 +4,7 @@ services:
     # Option A (default): image is built on the server -> "docker compose up -d --build"
     # Option B: pull the image built by GitHub Actions -> set EVE_BOT_IMAGE in .env
     #           (e.g. ghcr.io/headruner/eve-war-bot:latest) and "docker compose pull"
-    image: ${EVE_BOT_IMAGE:-eve-war-bot:2.0.0}
+    image: ${EVE_BOT_IMAGE:-eve-war-bot:2.1.0}
     container_name: eve-war-bot
     restart: unless-stopped
 

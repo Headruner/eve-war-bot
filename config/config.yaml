@@ -34,6 +34,14 @@ report:                       # war report (score, allies, kills) from CCP ESI
   update_interval_min: 60
   track_days: 7               # stop updating a message after N days (or when war ends)
 
+structures:                   # structures owned by each party (citadels, refineries ...)
+  enabled: true
+  # EVE Ref dataset: public structures from CCP ESI incl. Adam4EVE backfill
+  # (adam4eve.eu itself disallows bots in its robots.txt, so it is not read)
+  source_url: https://data.everef.net/structures/structures-latest.v2.json
+  refresh_hours: 24           # download at most once a day (ETag / If-Modified-Since)
+  max_listed: 5               # structures listed by name per party (rest counted)
+
 filters:
   watch_entity_ids: []        # alliance/corp IDs; empty = all wars
   statuses: [none, open_for_allies, mutual]
