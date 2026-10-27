@@ -23,11 +23,13 @@ eve-war-bot/
 │   └── DEPLOY.md                 # short server guide - shipped in the image
 ├── .github/workflows/docker.yml  # CI: tests + build image on GitHub -> ghcr.io
 ├── docs/MANUAL.md                # beginner step-by-step deployment guide
-├── docs/wiki/                    # project wiki: vision, FRD, user stories, tests, statistics
+├── docs/wiki/                    # project wiki: vision, FRD, user stories, tests, statistics, architecture (C4)
+├── docs/diagrams/                # rendered SVGs of all PlantUML diagrams (generated)
 ├── scripts/
 │   ├── setup-droplet.sh          # server prep, only adds what is missing: tools, swap, Docker (never touches firewall/ports)
 │   ├── bot.sh                    # init | check | test | start | stop | restart | logs | status | update | backup | stats
 │   ├── publish-nexus.sh          # build + push the image to Nexus (Linux/macOS)
+│   ├── render_diagrams.py        # render PlantUML blocks in *.md to SVG (docs/diagrams/) and embed them
 │   └── publish-nexus.ps1         # same for Windows (Docker Desktop)
 ├── config/
 │   ├── credentials.example.json  # TEMPLATE with empty fields -> copy to credentials.json
@@ -109,6 +111,10 @@ Paths can be changed with the `CREDENTIALS_FILE` and `CONFIG_FILE` environment v
 
 ### 4.1 Architecture
 
+![EVE War Bot - deployment & integrations](docs/diagrams/readme-01-eve-war-bot-deployment-integrations.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title EVE War Bot - deployment & integrations
@@ -154,7 +160,13 @@ DIS ..> IMG : Discord fetches\nlogo URLs itself
 @enduml
 ```
 
+</details>
+
 ### 4.2 Polling cycle
+
+![One polling cycle (every poll_interval_min)](docs/diagrams/readme-02-one-polling-cycle-every-poll-interval-mi.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml
@@ -203,6 +215,8 @@ M -> M : refresh war reports of posted messages (see 4.7)
 M -> M : write heartbeat, sleep
 @enduml
 ```
+
+</details>
 
 ### 4.3 Integration 1 — CCP ESI: new wars (data source)
 
@@ -386,6 +400,10 @@ Source: EVE Online ESI · War #763527 · report updated • today 21:30
 
 A war posted at declaration has no kills yet. Instead of posting a new message every time something changes, the bot edits the message it already posted.
 
+![Live war report update (every update_interval_min)](docs/diagrams/readme-03-live-war-report-update-every-update-inte.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Live war report update (every update_interval_min)
@@ -412,6 +430,8 @@ loop each message
 end
 @enduml
 ```
+
+</details>
 
 | Rule | Value |
 |---|---|
@@ -440,6 +460,10 @@ Live updates edit existing messages, so they never create duplicates. Turn them 
 | Limits | only structures visible to outsiders are known; data is about one day old |
 | Adam4EVE link | each structures field and the Links field link to the Adam4EVE search for the party, e.g. `https://www.adam4eve.eu/structures.php?region=&system=&sector=&corp=&alliance=99010320&search=&location=30000142&maxJumps=999&group=&structure=&since=&market=` (`corp=<id>` for a corporation). Readers open it in the browser; the bot never requests it. |
 
+![Structures of a war party](docs/diagrams/readme-04-structures-of-a-war-party.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Structures of a war party
@@ -463,6 +487,8 @@ S -> E : POST /universe/names/ (types, systems, owners)
 S --> M : total, by type, top systems, listed
 @enduml
 ```
+
+</details>
 
 ## 5. Notification storage (no duplicates)
 
@@ -496,6 +522,10 @@ Databases from older versions are upgraded automatically on start: missing colum
 
 ### 5.3 State machine
 
+![War notification state](docs/diagrams/readme-05-war-notification-state.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title War notification state
@@ -512,6 +542,8 @@ filtered --> [*]
 failed --> [*]
 @enduml
 ```
+
+</details>
 
 ### 5.4 Why duplicates cannot happen
 
@@ -622,6 +654,10 @@ Rough memory budget: OS ≈ 150–250 MB · Docker ≈ 80–120 MB · bot ≈ 45
 
 The image carries everything a server needs, not only the program. One `install` command on the server unpacks the compose file, the config templates and the helper scripts. After that you only edit the secrets.
 
+![Delivery through a Nexus Docker registry](docs/diagrams/readme-06-delivery-through-a-nexus-docker-registry.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Delivery through a Nexus Docker registry
@@ -643,6 +679,8 @@ Op -> VM : bash scripts/bot.sh start
 VM -> VM : container runs (pulls :latest)
 @enduml
 ```
+
+</details>
 
 **What is inside the image (`/app/deploy`)**
 
@@ -717,6 +755,15 @@ The tests cover:
 - **Everything else:** filters, the multipart banner, the war report and live updates, dry runs, `install`, configuration (including 1.x keys and a Windows BOM), and the statistics algorithm.
 
 They run against a fake ESI class, a mock ESI HTTP server and a mock Discord webhook server. They never call the real ESI or Discord.
+
+### 8.1 Diagrams in the documentation
+
+Every diagram in the README and the wiki is written in PlantUML and shown as a rendered SVG from `docs/diagrams/`; the source stays in the page, folded under *PlantUML source*. After changing a diagram, render again (needs Java, Graphviz and `plantuml.jar`):
+
+```bash
+PLANTUML_JAR=/path/to/plantuml.jar python scripts/render_diagrams.py          # re-render changed diagrams only
+python scripts/render_diagrams.py --check                                     # exit 1 if a page or image is out of date
+```
 
 ## 9. Notes and open points
 

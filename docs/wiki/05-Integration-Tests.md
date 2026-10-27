@@ -18,6 +18,10 @@
 | Integration | Full poll cycle: ESI source → SQLite store → embed builder → HTTP client → **local mock Discord webhook server**; **real HTTP to a local mock ESI server** for caching, headers and 429; **real HTTP to a local mock structures-dataset server** (streaming, ETag/304); `install` with a real bundle folder | ESI (fake class or local HTTP server), Discord (local HTTP server) | 17 |
 | Contract / end-to-end | — (planned, see §5) | — | 0 |
 
+![Integration test setup](../diagrams/05-integration-tests-01-integration-test-setup.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Integration test setup
@@ -38,6 +42,8 @@ DN --> MW : POST / PATCH\n(JSON, multipart)
 MW --> DN : {"id": ...}
 @enduml
 ```
+
+</details>
 
 ## 2. How to run
 

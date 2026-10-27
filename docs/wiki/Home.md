@@ -40,6 +40,10 @@ Operational guides outside the wiki: [beginner manual](../MANUAL.md) · [technic
 
 ## Traceability
 
+![Traceability](../diagrams/home-01-traceability.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Traceability
@@ -59,6 +63,8 @@ A --> X
 M --> X
 @enduml
 ```
+
+</details>
 
 ## Editing this wiki
 

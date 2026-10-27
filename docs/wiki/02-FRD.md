@@ -18,6 +18,10 @@ This document describes **what** the EVE War Bot does, as epics and features, pl
 
 ## 2. System context
 
+![EVE War Bot - system context](../diagrams/02-frd-01-eve-war-bot-system-context.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title EVE War Bot - system context
@@ -43,6 +47,8 @@ REG --> BOT : image pull
 @enduml
 ```
 
+</details>
+
 ## 3. Actors
 
 | Actor | Description |
@@ -54,6 +60,10 @@ REG --> BOT : image pull
 | Scheduler (internal) | Bot loop: poll cycle every `poll_interval_min`, report update every `update_interval_min` |
 
 ## 4. Process overview
+
+![Poll cycle (simplified)](../diagrams/02-frd-02-poll-cycle-simplified.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml
@@ -82,6 +92,8 @@ endwhile (no)
 stop
 @enduml
 ```
+
+</details>
 
 ## 5. Epics and features
 
@@ -231,6 +243,10 @@ Priorities use MoSCoW. Every feature is traced to its stories.
 
 ## 10. Data model
 
+![wars.db](../diagrams/02-frd-03-wars-db.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title wars.db
@@ -274,6 +290,8 @@ note right of meta : bootstrapped_at,\nwatermark_war_id,\nstructures_loaded_at /
 note right of names : ESI id -> name cache
 @enduml
 ```
+
+</details>
 
 ## 11. Assumptions and open questions
 

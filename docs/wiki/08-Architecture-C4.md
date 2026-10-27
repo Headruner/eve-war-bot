@@ -27,6 +27,10 @@
 
 ## 1. C1 — System context
 
+![C1 · System context · EVE War Bot](../diagrams/08-architecture-c4-01-c1-system-context-eve-war-bot.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml C1
 !include <C4/C4_Context>
@@ -57,6 +61,8 @@ Rel(member, links, "Opens links from the message", "browser")
 @enduml
 ```
 
+</details>
+
 | Element | Type | Role | Notes |
 |---|---|---|---|
 | Discord member | Person | Consumer of the notifications | Does not interact with the bot directly (no commands) |
@@ -73,6 +79,10 @@ Rel(member, links, "Opens links from the message", "browser")
 ## 2. C2 — Containers
 
 > In C4, a *container* is a separately running or deployable unit (an application, a data store, a script). It is not necessarily a Docker container.
+
+![C2 · Containers · EVE War Bot](../diagrams/08-architecture-c4-02-c2-containers-eve-war-bot.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml C2
@@ -116,6 +126,8 @@ Rel(reg, svc, "Image pulled by", "docker pull")
 @enduml
 ```
 
+</details>
+
 | Container | Technology | Responsibility | Key decisions |
 |---|---|---|---|
 | **Bot service** | Python 3.12, `requests`, `PyYAML`, `Pillow`, `ijson`; image `python:3.12-slim` | All business logic; one process with a simple loop (no threads, no web server) | Python because of fast development, small memory (45–80 MiB typical) and good HTTP/JSON libraries. One process keeps the 1 GB shared server safe. No published ports: the bot only makes outgoing connections ([C-07](02-FRD.md#8-constraints)). |
@@ -130,6 +142,10 @@ Rel(reg, svc, "Image pulled by", "docker pull")
 ---
 
 ## 3. C3 — Components of the bot service
+
+![C3 · Components · Bot service (app/)](../diagrams/08-architecture-c4-03-c3-components-bot-service-app.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml C3
@@ -184,6 +200,8 @@ Rel(tools, db, "stats: bot counts")
 @enduml
 ```
 
+</details>
+
 ### 3.1 Component catalogue
 
 | Component | Module | Responsibility | Public API (main entry points) | Depends on |
@@ -202,6 +220,10 @@ Rel(tools, db, "stats: bot counts")
 | Tools | `stats.py`, `installer.py`, `healthcheck.py` | Monthly statistics from ESI history + database; unpack deployment bundle; Docker `HEALTHCHECK` from the heartbeat file | `stats.run()`, `installer.install()`, module `healthcheck` | ESI client, SQLite, Settings |
 
 ### 3.2 Runtime view: one poll cycle
+
+![Poll cycle across components (run_cycle)](../diagrams/08-architecture-c4-04-poll-cycle-across-components-run-cycle.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml C3-cycle
@@ -237,11 +259,17 @@ M -> M : write heartbeat
 @enduml
 ```
 
+</details>
+
 ---
 
 ## 4. C4 — Code
 
 > As the C4 authors recommend, this level is kept small: the code in `app/` is the source of truth. The diagram shows the classes and the most important functions of release 2.1.0 (about 2 150 lines of Python in 14 modules). Regenerate it when a class gets new public methods.
+
+![C4 · Code · main classes (app/, 2.1.0)](../diagrams/08-architecture-c4-05-c4-code-main-classes-app-2-1-0.svg)
+
+<details><summary>PlantUML source</summary>
 
 ```plantuml
 @startuml C4-code
@@ -401,6 +429,8 @@ MF --> banner
 MF --> report
 @enduml
 ```
+
+</details>
 
 ---
 

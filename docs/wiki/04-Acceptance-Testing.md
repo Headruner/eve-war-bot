@@ -18,6 +18,10 @@ A story is **accepted** when all of its acceptance criteria (Given / When / Then
 2. **Manual test scenarios** ([Manual tests](07-Manual-Test-Scenarios.md)): executed on the production server or a test server, results recorded in the scenario's *Result* line.
 3. **Field observation**: logs or messages from normal operation, e.g. the bootstrap log on the server.
 
+![Story acceptance flow](../diagrams/04-acceptance-testing-01-story-acceptance-flow.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title Story acceptance flow
@@ -30,6 +34,8 @@ Rework --> Implemented
 Accepted --> [*]
 @enduml
 ```
+
+</details>
 
 ## 2. Entry and exit criteria
 

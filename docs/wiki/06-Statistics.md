@@ -65,6 +65,10 @@ docker compose run --rm -T eve-war-bot stats --months 24 --json > reports/war-st
 
 War IDs increase with time, so the first war of a day is found by **binary search** over the war ID range. Only about 20 lookups are needed per boundary, instead of reading hundreds of thousands of wars. The wars of that day are then read one by one.
 
+![stats - wars on 1st day of a month](../diagrams/06-statistics-01-stats-wars-on-1st-day-of-a-month.svg)
+
+<details><summary>PlantUML source</summary>
+
 ```plantuml
 @startuml
 title stats - wars on 1st day of a month
@@ -85,6 +89,8 @@ end
 S -> S : Markdown table
 @enduml
 ```
+
+</details>
 
 - **Load:** about 25 ESI calls per month plus one per war of that day. Results are cached during a run. The ESI error limit is respected.
 - **Accuracy:** an automated test compares the search with a brute-force count on synthetic data (`test_stats_counts_wars_on_first_day_of_month`). The first real run should be spot-checked against zKillboard for one month ([MT-R-26](07-Manual-Test-Scenarios.md#mt-r-26)).
